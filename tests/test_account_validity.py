@@ -230,6 +230,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 "medium": "email",
                 "address": "izzy@test",
             }]
+
         module._api.get_threepids_for_user.side_effect = get_threepids
         await module._store.set_expiration_date_for_user(user_id)
 
@@ -250,7 +251,6 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertTrue(SHORT_TOKEN_REGEX.match(token))
 
     async def test_create_and_populate_table(self):
-
         def create_user_table(txn: LoggingTransaction):
             txn.execute(
                 """
@@ -298,14 +298,43 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 """,
                 (),
             )
+
         populate_users = True
         module = await create_account_validity_module()
-        await module._store._api.run_db_interaction("create_user_table", create_user_table,)
+        await module._store._api.run_db_interaction("create_user_table", create_user_table, )
 
         await module._store.create_and_populate_table(populate_users)
 
-        # res = await module._store._api.run_db_interaction(
-        #         "", "SELECT user_id FROM email_account_validity"
-        #     )
-        #
-        # self.assertEqual(0, len(res))
+        def check_email_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_account_validity,)
+        self.assertEqual(2, len(res))
+
+    async def test_get_users_expiring_soon(self):
+        module = await create_account_validity_module()
+        now_ms = int(time.time() * 1000)
+
+        user_id = "@izzy:test"
+        user_id_date = now_ms + (6 * 24 * 60 * 60 * 1000)  # 6 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id,
+            expiration_ts=user_id_date,
+        )
+        user_id2 = "@joe:test"
+        user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # 14 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id2,
+            expiration_ts=user_id_date2,
+        )
+        user_id3 = "@albert:test"
+        user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # 60 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id3,
+            expiration_ts=user_id_date3,
+        )
+
+        expired_users = await module._store.get_users_expiring_soon()
+
+        self.assertEqual(2, len(expired_users))

@@ -76,9 +76,11 @@ class EmailAccountValidity(EmailAccountValidityBase):
                 "'renew_at' is required when using email account validity"
             )
 
+        renew_at = [x.strip() for x in config["renew_at"].split(',')]
+
         parsed_config = EmailAccountValidityConfig(
             period=parse_duration(config["period"]),
-            renew_at=parse_duration(config["renew_at"]),
+            renew_at=[parse_duration(x) for x in renew_at],
             renew_email_subject=config.get("renew_email_subject"),
             send_links=config.get("send_links", True)
         )

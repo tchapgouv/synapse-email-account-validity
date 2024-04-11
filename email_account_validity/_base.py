@@ -47,6 +47,7 @@ class EmailAccountValidityBase:
         self._store = store
 
         self._period = config.period
+        self._renew_at = config.renew_at
         self._send_links = config.send_links
 
         (self._template_html, self._template_text,) = api.read_templates(
@@ -92,6 +93,7 @@ class EmailAccountValidityBase:
             user_id: ID of the user to send email(s) to.
             expiration_ts: Timestamp in milliseconds for the expiration date of
                 this user's account (used in the email templates).
+            period_in_ts: renewal period
         """
         threepids = await self._api.get_threepids_for_user(user_id)
 
@@ -153,7 +155,8 @@ class EmailAccountValidityBase:
                 text=plain_text,
             )
 
-        await self._store.set_renewal_mail_status(user_id=user_id, email_sent=True)
+        for period_in_ts in self._renew_at:
+            await self._store.set_renewal_mail_status(user_id=user_id, period_in_ts=period_in_ts , email_sent=True)
 
     async def generate_authenticated_renewal_token(self, user_id: str) -> str:
         """Generates a 8-digit long random string then saves it into the database.
@@ -309,6 +312,7 @@ class EmailAccountValidityBase:
             user_id=user_id,
             expiration_ts=expiration_ts,
             email_sent=email_sent,
+            renew_at=self._renew_at,
             token_format=TokenFormat.LONG if self._send_links else TokenFormat.SHORT,
             renewal_token=renewal_token,
             token_used_ts=now,
