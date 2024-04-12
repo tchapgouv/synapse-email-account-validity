@@ -83,9 +83,9 @@ class EmailAccountValidityBase:
         if expiration_ts is None:
             raise SynapseError(400, "User has no expiration time: %s" % (user_id,))
 
-        await self.send_renewal_email(user_id, expiration_ts)
+        await self.send_renewal_email(user_id, expiration_ts, self._renew_at[0])
 
-    async def send_renewal_email(self, user_id: str, expiration_ts: int):
+    async def send_renewal_email(self, user_id: str, expiration_ts: int, period_in_ts: int):
         """Sends out a renewal email to every email address attached to the given user
         with a unique link allowing them to renew their account.
 
@@ -155,8 +155,7 @@ class EmailAccountValidityBase:
                 text=plain_text,
             )
 
-        for period_in_ts in self._renew_at:
-            await self._store.set_renewal_mail_status(user_id=user_id, period_in_ts=period_in_ts , email_sent=True)
+        await self._store.set_renewal_mail_status(user_id=user_id, period_in_ts=period_in_ts, email_sent=True)
 
     async def generate_authenticated_renewal_token(self, user_id: str) -> str:
         """Generates a 8-digit long random string then saves it into the database.

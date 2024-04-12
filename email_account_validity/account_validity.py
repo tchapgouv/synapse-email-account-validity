@@ -165,5 +165,5 @@ class EmailAccountValidity(EmailAccountValidityBase):
                     continue
 
                 await self.send_renewal_email(
-                    user_id=user[0], expiration_ts=user[1]
+                    user_id=user[0], expiration_ts=user[1], period_in_ts=user[2]
                 )
