@@ -194,7 +194,7 @@ class EmailAccountValidityStore:
             users_period_to_insert = {}
             for period_in_ts in self._renew_at:
                 for user in users_to_insert.values():
-                    users_period_to_insert[user["user_id"]] = {
+                    users_period_to_insert[f"{user['user_id']}_{period_in_ts}"] = {
                         "user_id": user["user_id"],
                         "period_in_ts": period_in_ts,
                         "email_sent": user["email_sent"]

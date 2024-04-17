@@ -325,8 +325,15 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
             txn.execute("SELECT user_id FROM email_account_validity", ())
             return txn.fetchall()
 
+        def check_email_status_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_status_account_validity", ())
+            return txn.fetchall()
+
         res = await module._store._api.run_db_interaction("", check_email_account_validity, )
         self.assertEqual(2, len(res))
+
+        res = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(6, len(res))
 
     async def test_get_users_expiring_soon(self):
         module = await create_account_validity_module()
