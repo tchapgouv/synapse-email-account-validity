@@ -32,7 +32,7 @@ modules:
       # The maximum amount of time an account can stay valid for without being renewed.
       period: 6w
       # How long before an account expires should Synapse send it a renewal email.
-      renew_at: 1w
+      renew_at: 4w, 1w, 1d
       # Whether to include a link to click in the emails sent to users. If false, only a
       # renewal token is sent, in which case a shorter token is used, and the
       # user will need to copy it into a compatible client that will send an

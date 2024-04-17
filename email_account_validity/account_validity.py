@@ -154,8 +154,10 @@ class EmailAccountValidity(EmailAccountValidityBase):
         configuration, and sends renewal emails to all of these users as long as they
         have an email 3PID attached to their account.
         """
+        logger.info("Sending renewal emails")
         expiring_users = await self._store.get_users_expiring_soon()
 
+        logger.debug(f"Sending renewal emails to {len(expiring_users)} users")
         if expiring_users:
             for user in expiring_users:
                 if user[1] is None:
@@ -163,7 +165,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
                         "User %s has no expiration ts, ignoring" % user["user_id"],
                     )
                     continue
-
+                logger.debug(f"Sending renewal emails to user_id={user[0]}, expiration_ts={user[1]}, period_in_ts={user[2]}")
                 await self.send_renewal_email(
                     user_id=user[0], expiration_ts=user[1], period_in_ts=user[2]
                 )
