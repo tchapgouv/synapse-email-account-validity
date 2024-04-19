@@ -290,7 +290,7 @@ class EmailAccountValidityStore:
             email_sent: True means a renewal email has been sent for this account
                 and there's no need to send another one for the current validity
                 period.
-            send_renewal_email_at: List of period
+            send_renewal_email_at: List of period to know when to send the renewal mail
             token_format: The configured token format, used to determine which
                 column to update.
             renewal_token: Renewal token the user can use to extend the validity
