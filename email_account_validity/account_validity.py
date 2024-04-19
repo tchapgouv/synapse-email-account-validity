@@ -71,17 +71,17 @@ class EmailAccountValidity(EmailAccountValidityBase):
         if "period" not in config:
             raise ConfigError("'period' is required when using email account validity")
 
-        if "renew_at" not in config:
+        if "send_renewal_email_at" not in config:
             raise ConfigError(
-                "'renew_at' is required when using email account validity"
+                "'send_renewal_email_at' is required when using email account validity"
             )
 
-        renew_at = [x.strip() for x in config["renew_at"].split(',')]
+        send_renewal_email_at = [x.strip() for x in config["send_renewal_email_at"].split(',')]
 
         parsed_config = EmailAccountValidityConfig(
             period=parse_duration(config["period"]),
-            renew_at=[parse_duration(x) for x in renew_at],
-            renew_email_subject=config.get("renew_email_subject"),
+            send_renewal_email_at=[parse_duration(x) for x in send_renewal_email_at],
+            renewal_email_subject=config.get("renewal_email_subject"),
             send_links=config.get("send_links", True)
         )
         return parsed_config
@@ -150,7 +150,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
 
     async def _send_renewal_emails(self):
         """Gets the list of users whose account is expiring in the amount of time
-        configured in the ``renew_at`` parameter from the ``account_validity``
+        configured in the ``send_renewal_email_at`` parameter from the ``account_validity``
         configuration, and sends renewal emails to all of these users as long as they
         have an email 3PID attached to their account.
         """

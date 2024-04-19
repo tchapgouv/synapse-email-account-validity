@@ -37,7 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self._period = config.period
-        self._renew_at = config.renew_at
+        self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
 
@@ -167,7 +167,7 @@ class EmailAccountValidityStore:
                         "token_used_ts_ms": None,
                     }
 
-            # Insert the users in the table.
+            # Insert the users in the email_account_validity table.
             DatabasePool.simple_insert_many_txn(
                 txn=txn,
                 table="email_account_validity",
@@ -192,7 +192,7 @@ class EmailAccountValidityStore:
             )
 
             users_period_to_insert = {}
-            for period_in_ts in self._renew_at:
+            for period_in_ts in self._send_renewal_email_at:
                 for user in users_to_insert.values():
                     users_period_to_insert[f"{user['user_id']}_{period_in_ts}"] = {
                         "user_id": user["user_id"],
@@ -240,8 +240,8 @@ class EmailAccountValidityStore:
                 )
 
     async def get_users_expiring_soon(self) -> List[Dict[str, Union[str, int]]]:
-        """Selects users whose account will expire in the [now, now + renew_at] time
-        window (see configuration for account_validity for information on what renew_at
+        """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
+        window (see configuration for account_validity for information on what send_renewal_email_at
         refers to).
 
         Returns:
@@ -275,7 +275,7 @@ class EmailAccountValidityStore:
             user_id: str,
             expiration_ts: int,
             email_sent: bool,
-            renew_at: List[int],
+            send_renewal_email_at: List[int],
             token_format: TokenFormat,
             renewal_token: Optional[str] = None,
             token_used_ts: Optional[int] = None,
@@ -290,7 +290,7 @@ class EmailAccountValidityStore:
             email_sent: True means a renewal email has been sent for this account
                 and there's no need to send another one for the current validity
                 period.
-            renew_at: List of period
+            send_renewal_email_at: List of period
             token_format: The configured token format, used to determine which
                 column to update.
             renewal_token: Renewal token the user can use to extend the validity
@@ -324,7 +324,7 @@ class EmailAccountValidityStore:
         )
 
         def set_account_status_validity_for_user_txn(txn: LoggingTransaction):
-            for period_in_ts in renew_at:
+            for period_in_ts in send_renewal_email_at:
                 txn.execute(
                     """
                     INSERT INTO email_status_account_validity (
@@ -504,7 +504,7 @@ class EmailAccountValidityStore:
                 SET email_sent = EXCLUDED.email_sent
         """
 
-        for period_in_ts in self._renew_at:
+        for period_in_ts in self._send_renewal_email_at:
             txn.execute(sql, (user_id, period_in_ts, False))
 
         txn.call_after(self.get_expiration_ts_for_user.invalidate, (user_id,))

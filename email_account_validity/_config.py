@@ -20,6 +20,6 @@ import attr
 @attr.s(frozen=True, auto_attribs=True)
 class EmailAccountValidityConfig:
     period: int
-    renew_at: List[int]
-    renew_email_subject: Optional[str] = None
+    send_renewal_email_at: List[int]
+    renewal_email_subject: Optional[str] = None
     send_links: bool = True

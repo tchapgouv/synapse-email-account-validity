@@ -47,7 +47,7 @@ class EmailAccountValidityBase:
         self._store = store
 
         self._period = config.period
-        self._renew_at = config.renew_at
+        self._send_renewal_email_at = config.send_renewal_email_at
         self._send_links = config.send_links
 
         (self._template_html, self._template_text,) = api.read_templates(
@@ -55,17 +55,17 @@ class EmailAccountValidityBase:
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates"),
         )
 
-        if config.renew_email_subject is not None:
-            renew_email_subject = config.renew_email_subject
+        if config.renewal_email_subject is not None:
+            renewal_email_subject = config.renewal_email_subject
         else:
-            renew_email_subject = "Renew your %(app)s account"
+            renewal_email_subject = "Renew your %(app)s account"
 
         try:
             app_name = self._api.email_app_name
-            self._renew_email_subject = renew_email_subject % {"app": app_name}
+            self._renewal_email_subject = renewal_email_subject % {"app": app_name}
         except (KeyError, TypeError):
             # If substitution failed, fall back to the bare strings.
-            self._renew_email_subject = renew_email_subject
+            self._renewal_email_subject = renewal_email_subject
 
     async def send_renewal_email_to_user(self, user_id: str) -> None:
         """
@@ -83,7 +83,7 @@ class EmailAccountValidityBase:
         if expiration_ts is None:
             raise SynapseError(400, "User has no expiration time: %s" % (user_id,))
 
-        await self.send_renewal_email(user_id, expiration_ts, self._renew_at[0])
+        await self.send_renewal_email(user_id, expiration_ts, self._send_renewal_email_at[0])
 
     async def send_renewal_email(self, user_id: str, expiration_ts: int, period_in_ts: int):
         """Sends out a renewal email to every email address attached to the given user
@@ -150,7 +150,7 @@ class EmailAccountValidityBase:
         for address in addresses:
             await self._api.send_mail(
                 recipient=address,
-                subject=self._renew_email_subject,
+                subject=self._renewal_email_subject,
                 html=html_text,
                 text=plain_text,
             )
@@ -311,7 +311,7 @@ class EmailAccountValidityBase:
             user_id=user_id,
             expiration_ts=expiration_ts,
             email_sent=email_sent,
-            renew_at=self._renew_at,
+            send_renewal_email_at=self._send_renewal_email_at,
             token_format=TokenFormat.LONG if self._send_links else TokenFormat.SHORT,
             renewal_token=renewal_token,
             token_used_ts=now,
