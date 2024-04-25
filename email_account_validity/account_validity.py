@@ -76,7 +76,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
                 "'send_renewal_email_at' is required when using email account validity"
             )
 
-        send_renewal_email_at = [x.strip() for x in config["send_renewal_email_at"].split(',')]
+        send_renewal_email_at = [x.strip() for x in config["send_renewal_email_at"]]
 
         parsed_config = EmailAccountValidityConfig(
             period=parse_duration(config["period"]),
