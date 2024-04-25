@@ -23,4 +23,3 @@ class EmailAccountValidityConfig:
     renew_at: int
     renew_email_subject: Optional[str] = None
     send_links: bool = True
-

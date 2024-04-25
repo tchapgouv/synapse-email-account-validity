@@ -134,7 +134,6 @@ class EmailAccountValidityBase:
             renewal_token = await self.generate_authenticated_renewal_token(user_id)
             url = None
 
-
         template_vars = {
             "app_name": self._api.email_app_name,
             "display_name": display_name,
