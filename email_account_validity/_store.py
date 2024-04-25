@@ -324,6 +324,13 @@ class EmailAccountValidityStore:
         )
 
         def set_account_status_validity_for_user_txn(txn: LoggingTransaction):
+            txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
             for period_in_ts in send_renewal_email_at:
                 txn.execute(
                     """
@@ -333,8 +340,6 @@ class EmailAccountValidityStore:
                         email_sent
                     )
                     VALUES (?, ?, ?)
-                    ON CONFLICT (user_id, period_in_ts) DO UPDATE
-                    SET email_sent = EXCLUDED.email_sent
                     """,
                     (user_id, period_in_ts, email_sent)
                 )
