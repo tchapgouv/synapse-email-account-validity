@@ -165,7 +165,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
                         "User %s has no expiration ts, ignoring" % user["user_id"],
                     )
                     continue
-                logger.debug(f"Sending renewal emails to user_id={user[0]}, expiration_ts={user[1]}, period_in_ts={user[2]}")
+                logger.debug(f"Sending renewal emails to user_id={user[0]}, expiration_ts={user[1]}, renewal_period_in_ts={user[2]}")
                 await self.send_renewal_email(
-                    user_id=user[0], expiration_ts=user[1], period_in_ts=user[2]
+                    user_id=user[0], expiration_ts=user[1], renewal_period_in_ts=user[2]
                 )

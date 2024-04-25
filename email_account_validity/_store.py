@@ -99,9 +99,9 @@ class EmailAccountValidityStore:
                 """
                 CREATE TABLE IF NOT EXISTS email_status_account_validity(
                     user_id TEXT,
-                    period_in_ts BIGINT,
+                    renewal_period_in_ts BIGINT,
                     email_sent BOOLEAN NOT NULL,
-                    CONSTRAINT email_status_account_validity_pkey PRIMARY KEY (user_id,period_in_ts)
+                    CONSTRAINT email_status_account_validity_pkey PRIMARY KEY (user_id,renewal_period_in_ts)
                 )
                 """,
                 (),
@@ -192,11 +192,11 @@ class EmailAccountValidityStore:
             )
 
             users_period_to_insert = {}
-            for period_in_ts in self._send_renewal_email_at:
+            for renewal_period_in_ts in self._send_renewal_email_at:
                 for user in users_to_insert.values():
-                    users_period_to_insert[f"{user['user_id']}_{period_in_ts}"] = {
+                    users_period_to_insert[f"{user['user_id']}_{renewal_period_in_ts}"] = {
                         "user_id": user["user_id"],
-                        "period_in_ts": period_in_ts,
+                        "renewal_period_in_ts": renewal_period_in_ts,
                         "email_sent": user["email_sent"]
                     }
             # Insert the users in the table.
@@ -205,13 +205,13 @@ class EmailAccountValidityStore:
                 table="email_status_account_validity",
                 keys=[
                     "user_id",
-                    "period_in_ts",
+                    "renewal_period_in_ts",
                     "email_sent"
                 ],
                 values=[
                     (
                         user["user_id"],
-                        user["period_in_ts"],
+                        user["renewal_period_in_ts"],
                         user["email_sent"]
                     )
                     for user in users_period_to_insert.values()
@@ -254,12 +254,12 @@ class EmailAccountValidityStore:
 
             txn.execute(
                 """
-                SELECT eav.user_id, eav.expiration_ts_ms, MAX(esav.period_in_ts) as closest_renewal_period
+                SELECT eav.user_id, eav.expiration_ts_ms, MAX(esav.renewal_period_in_ts) as closest_renewal_period
                 FROM email_account_validity eav
                 JOIN email_status_account_validity esav
                 ON eav.user_id = esav.user_id AND esav.email_sent = ?
                 GROUP BY eav.user_id, eav.expiration_ts_ms
-                HAVING (eav.expiration_ts_ms - ?) <= MAX(esav.period_in_ts)
+                HAVING (eav.expiration_ts_ms - ?) <= MAX(esav.renewal_period_in_ts)
                 """,
                 (False, now_ms),
             )
@@ -331,17 +331,17 @@ class EmailAccountValidityStore:
                 """,
                 (user_id,)
             )
-            for period_in_ts in send_renewal_email_at:
+            for renewal_period_in_ts in send_renewal_email_at:
                 txn.execute(
                     """
                     INSERT INTO email_status_account_validity (
                         user_id,
-                        period_in_ts,
+                        renewal_period_in_ts,
                         email_sent
                     )
                     VALUES (?, ?, ?)
                     """,
-                    (user_id, period_in_ts, email_sent)
+                    (user_id, renewal_period_in_ts, email_sent)
                 )
 
         await self._api.run_db_interaction(
@@ -509,23 +509,24 @@ class EmailAccountValidityStore:
         sql = """
                 INSERT INTO email_status_account_validity (
                     user_id,
-                    period_in_ts,
+                    renewal_period_in_ts,
                     email_sent
                 )
                 VALUES (?, ?, ?)
         """
 
-        for period_in_ts in self._send_renewal_email_at:
-            txn.execute(sql, (user_id, period_in_ts, False))
+        for renewal_period_in_ts in self._send_renewal_email_at:
+            txn.execute(sql, (user_id, renewal_period_in_ts, False))
 
         txn.call_after(self.get_expiration_ts_for_user.invalidate, (user_id,))
 
-    async def set_renewal_mail_status(self, user_id: str, period_in_ts: int, email_sent: bool) -> None:
+    async def set_renewal_mail_status(self, user_id: str, renewal_period_in_ts: int, email_sent: bool) -> None:
         """Sets or unsets the flag that indicates whether a renewal email has been sent
         to the user (and the user hasn't renewed their account yet).
 
         Args:
             user_id: ID of the user to set/unset the flag for.
+            renewal_period_in_ts: renewal period to set/unset the flag for.
             email_sent: Flag which indicates whether a renewal email has been sent
                 to this user.
         """
@@ -534,7 +535,7 @@ class EmailAccountValidityStore:
             DatabasePool.simple_update_one_txn(
                 txn=txn,
                 table="email_status_account_validity",
-                keyvalues={"user_id": user_id, "period_in_ts": period_in_ts},
+                keyvalues={"user_id": user_id, "renewal_period_in_ts": renewal_period_in_ts},
                 updatevalues={"email_sent": email_sent},
             )
 
