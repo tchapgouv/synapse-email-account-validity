@@ -309,3 +309,26 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         #     )
         #
         # self.assertEqual(0, len(res))
+
+    async def test_calculate_days_until_expiration(self):
+
+        module = await create_account_validity_module()
+        # Set the current time to 1 day before the expiration time
+        expiration_ts = int(time.time() * 1000) + (86400 * 1000)
+        self.assertEqual(module.calculate_days_until_expiration(expiration_ts), 1)
+
+        # Set the current time to 2 days after the expiration time
+        expiration_ts = int(time.time() * 1000) - (86400 * 2 * 1000)
+        self.assertEqual(module.calculate_days_until_expiration(expiration_ts), 0)
+
+        # Set the current time to exactly the expiration time
+        expiration_ts = int(time.time() * 1000)
+        self.assertEqual(module.calculate_days_until_expiration(expiration_ts), 0)
+
+        # Set the expiration time to 0, which should result in 0 days until expiration
+        expiration_ts = 0
+        self.assertEqual(module.calculate_days_until_expiration(expiration_ts), 0)
+
+        # Set the expiration time to a negative value, which should result in 0 days until expiration
+        expiration_ts = -1000
+        self.assertEqual(module.calculate_days_until_expiration(expiration_ts), 0)

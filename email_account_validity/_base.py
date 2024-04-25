@@ -157,11 +157,11 @@ class EmailAccountValidityBase:
 
         await self._store.set_renewal_mail_status(user_id=user_id, email_sent=True)
 
-    def calculate_days_until_expiration(expiration_ts: int) -> int:
+    def calculate_days_until_expiration(self, expiration_ts: int) -> int:
         SECONDS_PER_DAY = 86400
         # Check number of days before expiracy
         now_ms = int(time.time() * 1000)
-        datediff_sec = int((now_ms - expiration_ts) / 1000)
+        datediff_sec = int((expiration_ts - now_ms) / 1000)
 
         if datediff_sec > 0:
             datediff_days = datediff_sec // SECONDS_PER_DAY # convert difference of seconds to days
