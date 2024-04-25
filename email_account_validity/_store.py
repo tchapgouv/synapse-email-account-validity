@@ -498,6 +498,14 @@ class EmailAccountValidityStore:
 
         txn.execute(sql, (user_id, expiration_ts))
 
+        txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+
         sql = """
                 INSERT INTO email_status_account_validity (
                     user_id,
@@ -505,8 +513,6 @@ class EmailAccountValidityStore:
                     email_sent
                 )
                 VALUES (?, ?, ?)
-                ON CONFLICT (user_id, period_in_ts) DO UPDATE
-                SET email_sent = EXCLUDED.email_sent
         """
 
         for period_in_ts in self._send_renewal_email_at:
