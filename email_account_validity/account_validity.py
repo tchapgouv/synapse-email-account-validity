@@ -71,15 +71,17 @@ class EmailAccountValidity(EmailAccountValidityBase):
         if "period" not in config:
             raise ConfigError("'period' is required when using email account validity")
 
-        if "renew_at" not in config:
+        if "send_renewal_email_at" not in config:
             raise ConfigError(
-                "'renew_at' is required when using email account validity"
+                "'send_renewal_email_at' is required when using email account validity"
             )
+
+        send_renewal_email_at = [x.strip() for x in config["send_renewal_email_at"]]
 
         parsed_config = EmailAccountValidityConfig(
             period=parse_duration(config["period"]),
-            renew_at=parse_duration(config["renew_at"]),
-            renew_email_subject=config.get("renew_email_subject"),
+            send_renewal_email_at=[parse_duration(x) for x in send_renewal_email_at],
+            renewal_email_subject=config.get("renewal_email_subject"),
             send_links=config.get("send_links", True)
         )
         return parsed_config
@@ -148,12 +150,14 @@ class EmailAccountValidity(EmailAccountValidityBase):
 
     async def _send_renewal_emails(self):
         """Gets the list of users whose account is expiring in the amount of time
-        configured in the ``renew_at`` parameter from the ``account_validity``
+        configured in the ``send_renewal_email_at`` parameter from the ``account_validity``
         configuration, and sends renewal emails to all of these users as long as they
         have an email 3PID attached to their account.
         """
+        logger.info("Sending renewal emails")
         expiring_users = await self._store.get_users_expiring_soon()
 
+        logger.debug(f"Sending renewal emails to {len(expiring_users)} users")
         if expiring_users:
             for user in expiring_users:
                 if user[1] is None:
@@ -161,7 +165,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
                         "User %s has no expiration ts, ignoring" % user["user_id"],
                     )
                     continue
-
+                logger.debug(f"Sending renewal emails to user_id={user[0]}, expiration_ts={user[1]}, renewal_period_in_ts={user[2]}")
                 await self.send_renewal_email(
-                    user_id=user[0], expiration_ts=user[1]
+                    user_id=user[0], expiration_ts=user[1], renewal_period_in_ts=user[2]
                 )

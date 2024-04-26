@@ -24,7 +24,7 @@ import aiounittest
 from synapse.module_api import LoggingTransaction
 from synapse.module_api.errors import SynapseError
 
-from email_account_validity._utils import LONG_TOKEN_REGEX, SHORT_TOKEN_REGEX, TokenFormat
+from email_account_validity._utils import LONG_TOKEN_REGEX, SHORT_TOKEN_REGEX, TokenFormat, parse_duration
 from tests import create_account_validity_module
 
 
@@ -115,10 +115,26 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
 
         await module._store.set_expiration_date_for_user(user_id)
 
+        def check_email_status_account_validity(txn: LoggingTransaction):
+            txn.execute(
+                """
+                SELECT eav.user_id, eav.expiration_ts_ms
+                FROM email_account_validity eav 
+                JOIN email_status_account_validity esav 
+                ON eav.user_id = esav.user_id AND esav.email_sent = false
+                """,
+                ()
+            )
+            return txn.fetchall()
+        email_status_users = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(3, len(email_status_users))
+
         # Test that trying to send an email to a known user that has an email address
         # attached to their account results in an email being sent
         await module.send_renewal_email_to_user(user_id)
         self.assertEqual(module._api.send_mail.call_count, 1)
+        email_status_users = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(2, len(email_status_users))
 
         # Test that the email content contains a link; we haven't set send_links in the
         # module's config so its value should be the default (which is True).
@@ -230,6 +246,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 "medium": "email",
                 "address": "izzy@test",
             }]
+
         module._api.get_threepids_for_user.side_effect = get_threepids
         await module._store.set_expiration_date_for_user(user_id)
 
@@ -250,7 +267,6 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertTrue(SHORT_TOKEN_REGEX.match(token))
 
     async def test_create_and_populate_table(self):
-
         def create_user_table(txn: LoggingTransaction):
             txn.execute(
                 """
@@ -298,14 +314,141 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 """,
                 (),
             )
+
         populate_users = True
         module = await create_account_validity_module()
-        await module._store._api.run_db_interaction("create_user_table", create_user_table,)
+        await module._store._api.run_db_interaction("create_user_table", create_user_table, )
 
         await module._store.create_and_populate_table(populate_users)
 
-        # res = await module._store._api.run_db_interaction(
-        #         "", "SELECT user_id FROM email_account_validity"
-        #     )
-        #
-        # self.assertEqual(0, len(res))
+        def check_email_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_account_validity", ())
+            return txn.fetchall()
+
+        def check_email_status_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_status_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_account_validity, )
+        self.assertEqual(2, len(res))
+
+        res = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(6, len(res))
+
+    async def test_get_users_expiring_soon(self):
+        module = await create_account_validity_module()
+        now_ms = int(time.time() * 1000)
+
+        user_id = "@izzy:test"
+        user_id_date = now_ms + (6 * 24 * 60 * 60 * 1000)  # 6 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id,
+            expiration_ts=user_id_date,
+        )
+        user_id2 = "@joe:test"
+        user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # 14 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id2,
+            expiration_ts=user_id_date2,
+        )
+        user_id3 = "@albert:test"
+        user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # 60 days ahead
+        await module.renew_account_for_user(
+            user_id=user_id3,
+            expiration_ts=user_id_date3,
+        )
+
+        expiring_users = await module._store.get_users_expiring_soon()
+
+        self.assertEqual(2, len(expiring_users))
+
+    async def test_send_renewal_email(self):
+        # conf :
+        # "period": "6w",
+        # "send_renewal_email_at": ["30d", "2w", "1w"],
+        module = await create_account_validity_module()
+        now_ms = int(time.time() * 1000)
+
+        threepids = {
+            "@izzy:test": [{
+                "medium": "email",
+                "address": "izzy@test",
+            }],
+            "@joe:test": [{
+                "medium": "email",
+                "address": "joe@test",
+            }],
+            "@albert:test": [{
+                "medium": "email",
+                "address": "albert@test",
+            }],
+        }
+
+        async def get_threepids(user_id):
+            return threepids[user_id]
+
+        module._api.get_threepids_for_user.side_effect = get_threepids
+
+        user_id1 = "@izzy:test"
+        user_id_date1 = now_ms + (6 * 24 * 60 * 60 * 1000)  # will expire 6 days
+        await module.renew_account_for_user(
+            user_id=user_id1,
+            expiration_ts=user_id_date1,
+        )
+        user_id2 = "@joe:test"
+        user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # will expire 14 days
+        await module.renew_account_for_user(
+            user_id=user_id2,
+            expiration_ts=user_id_date2,
+        )
+        user_id3 = "@albert:test"
+        user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # will expire 60 days
+        await module.renew_account_for_user(
+            user_id=user_id3,
+            expiration_ts=user_id_date3,
+        )
+
+        # user_1 and user_id2 are the users that will expire soon : period 30d
+        expiring_users = await module._store.get_users_expiring_soon()
+        self.assertEqual(2, len(expiring_users))
+        user_1 = expiring_users[0]
+        self.assertEqual(user_id1, user_1[0])
+        self.assertEqual(user_id_date1, user_1[1])
+        self.assertEqual(parse_duration("30d"), user_1[2])
+        user_2 = expiring_users[1]
+        self.assertEqual(user_id2, user_2[0])
+        self.assertEqual(user_id_date2, user_2[1])
+        self.assertEqual(parse_duration("30d"), user_2[2])
+
+        # should send a first renewal mail to 2 users : user_1 and user_id2 for period 30d
+        await module._send_renewal_emails()
+
+        # after first renewal email is sent, user_1 and user_id2 are the users that will expire soon : period 2 weeks
+        expiring_users = await module._store.get_users_expiring_soon()
+        self.assertEqual(2, len(expiring_users))
+        user_1 = expiring_users[0]
+        self.assertEqual(user_id1, user_1[0])
+        self.assertEqual(user_id_date1, user_1[1])
+        self.assertEqual(parse_duration("2w"), user_1[2])
+        user_2 = expiring_users[1]
+        self.assertEqual(user_id2, user_2[0])
+        self.assertEqual(user_id_date2, user_2[1])
+        self.assertEqual(parse_duration("2w"), user_2[2])
+
+        # should send a second renewal mail to 2 users : user_1 and user_id2 for period 2 weeks
+        await module._send_renewal_emails()
+
+        # after second renewal email is sent, user_1 is the user that will expire soon : period 1 week
+        expiring_users = await module._store.get_users_expiring_soon()
+        self.assertEqual(1, len(expiring_users))
+        user_1 = expiring_users[0]
+        self.assertEqual(user_id1, user_1[0])
+        self.assertEqual(user_id_date1, user_1[1])
+        self.assertEqual(parse_duration("1w"), user_1[2])
+
+        # should send a third renewal mail to user_1 for period 1 week
+        await module._send_renewal_emails()
+
+        # after third renewal email is sent, no user should remain as all email have been sent
+        expiring_users = await module._store.get_users_expiring_soon()
+        self.assertEqual(0, len(expiring_users))

@@ -37,7 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self._period = config.period
-        self._renew_at = config.renew_at
+        self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
 
@@ -48,6 +48,7 @@ class EmailAccountValidityStore:
         within Synapse. It populates users in it by batches of 100 in order not to clog up
         the database connection with big requests.
         """
+
         def create_table_txn(txn: LoggingTransaction):
             # Try to create a table for the module.
 
@@ -64,12 +65,12 @@ class EmailAccountValidityStore:
             #                        requires authentication using an access token.
             # * token_used_ts_ms: Timestamp at which the renewal token for the user has
             #                     been used, or NULL if it hasn't been used yet.
+
             txn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS email_account_validity(
                     user_id TEXT PRIMARY KEY,
                     expiration_ts_ms BIGINT NOT NULL,
-                    email_sent BOOLEAN NOT NULL,
                     long_renewal_token TEXT,
                     short_renewal_token TEXT,
                     token_used_ts_ms BIGINT
@@ -90,6 +91,18 @@ class EmailAccountValidityStore:
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS short_renewal_token_idx
                     ON email_account_validity(short_renewal_token, user_id)
+                """,
+                (),
+            )
+
+            txn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS email_status_account_validity(
+                    user_id TEXT,
+                    renewal_period_in_ts BIGINT,
+                    email_sent BOOLEAN NOT NULL,
+                    CONSTRAINT email_status_account_validity_pkey PRIMARY KEY (user_id,renewal_period_in_ts)
+                )
                 """,
                 (),
             )
@@ -124,7 +137,6 @@ class EmailAccountValidityStore:
                 retcols=(
                     "user_id",
                     "expiration_ts_ms",
-                    "email_sent",
                     "renewal_token",
                     "token_used_ts_ms",
                 ),
@@ -155,14 +167,13 @@ class EmailAccountValidityStore:
                         "token_used_ts_ms": None,
                     }
 
-            # Insert the users in the table.
+            # Insert the users in the email_account_validity table.
             DatabasePool.simple_insert_many_txn(
                 txn=txn,
                 table="email_account_validity",
                 keys=[
                     "user_id",
                     "expiration_ts_ms",
-                    "email_sent",
                     "long_renewal_token",
                     "token_used_ts_ms",
                 ],
@@ -170,7 +181,6 @@ class EmailAccountValidityStore:
                     (
                         user["user_id"],
                         user["expiration_ts_ms"],
-                        user["email_sent"],
                         # If there's a renewal token for the user, we consider it's a long
                         # one, because the non-module implementation of account validity
                         # doesn't have a concept of short tokens.
@@ -178,6 +188,33 @@ class EmailAccountValidityStore:
                         user["token_used_ts_ms"],
                     )
                     for user in users_to_insert.values()
+                ],
+            )
+
+            users_period_to_insert = {}
+            for renewal_period_in_ts in self._send_renewal_email_at:
+                for user in users_to_insert.values():
+                    users_period_to_insert[f"{user['user_id']}_{renewal_period_in_ts}"] = {
+                        "user_id": user["user_id"],
+                        "renewal_period_in_ts": renewal_period_in_ts,
+                        "email_sent": user["email_sent"]
+                    }
+            # Insert the users in the table.
+            DatabasePool.simple_insert_many_txn(
+                txn=txn,
+                table="email_status_account_validity",
+                keys=[
+                    "user_id",
+                    "renewal_period_in_ts",
+                    "email_sent"
+                ],
+                values=[
+                    (
+                        user["user_id"],
+                        user["renewal_period_in_ts"],
+                        user["email_sent"]
+                    )
+                    for user in users_period_to_insert.values()
                 ],
             )
 
@@ -203,40 +240,45 @@ class EmailAccountValidityStore:
                 )
 
     async def get_users_expiring_soon(self) -> List[Dict[str, Union[str, int]]]:
-        """Selects users whose account will expire in the [now, now + renew_at] time
-        window (see configuration for account_validity for information on what renew_at
+        """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
+        window (see configuration for account_validity for information on what send_renewal_email_at
         refers to).
 
         Returns:
             A list of dictionaries, each with a user ID and expiration time (in
             milliseconds).
         """
-        def select_users_txn(txn, renew_at):
+
+        def select_users_txn(txn):
             now_ms = int(time.time() * 1000)
 
             txn.execute(
                 """
-                SELECT user_id, expiration_ts_ms FROM email_account_validity
-                WHERE email_sent = ? AND (expiration_ts_ms - ?) <= ?
+                SELECT eav.user_id, eav.expiration_ts_ms, MAX(esav.renewal_period_in_ts) as closest_renewal_period
+                FROM email_account_validity eav
+                JOIN email_status_account_validity esav
+                ON eav.user_id = esav.user_id AND esav.email_sent = ?
+                GROUP BY eav.user_id, eav.expiration_ts_ms
+                HAVING (eav.expiration_ts_ms - ?) <= MAX(esav.renewal_period_in_ts)
                 """,
-                (False, now_ms, renew_at),
+                (False, now_ms),
             )
             return txn.fetchall()
 
         return await self._api.run_db_interaction(
             "get_users_expiring_soon",
-            select_users_txn,
-            self._renew_at,
+            select_users_txn
         )
 
     async def set_account_validity_for_user(
-        self,
-        user_id: str,
-        expiration_ts: int,
-        email_sent: bool,
-        token_format: TokenFormat,
-        renewal_token: Optional[str] = None,
-        token_used_ts: Optional[int] = None,
+            self,
+            user_id: str,
+            expiration_ts: int,
+            email_sent: bool,
+            send_renewal_email_at: List[int],
+            token_format: TokenFormat,
+            renewal_token: Optional[str] = None,
+            token_used_ts: Optional[int] = None,
     ):
         """Updates the account validity properties of the given account, with the
         given values.
@@ -248,6 +290,7 @@ class EmailAccountValidityStore:
             email_sent: True means a renewal email has been sent for this account
                 and there's no need to send another one for the current validity
                 period.
+            send_renewal_email_at: List of period to know when to send the renewal mail
             token_format: The configured token format, used to determine which
                 column to update.
             renewal_token: Renewal token the user can use to extend the validity
@@ -262,24 +305,48 @@ class EmailAccountValidityStore:
                 INSERT INTO email_account_validity (
                     user_id,
                     expiration_ts_ms,
-                    email_sent,
                     %(token_column_name)s,
                     token_used_ts_ms
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT (user_id) DO UPDATE
                 SET
                     expiration_ts_ms = EXCLUDED.expiration_ts_ms,
-                    email_sent = EXCLUDED.email_sent,
                     %(token_column_name)s = EXCLUDED.%(token_column_name)s,
                     token_used_ts_ms = EXCLUDED.token_used_ts_ms
                 """ % {"token_column_name": _TOKEN_COLUMN_NAME[token_format]},
-                (user_id, expiration_ts, email_sent, renewal_token, token_used_ts)
+                (user_id, expiration_ts, renewal_token, token_used_ts)
             )
 
         await self._api.run_db_interaction(
             "set_account_validity_for_user",
             set_account_validity_for_user_txn,
+        )
+
+        def set_account_status_validity_for_user_txn(txn: LoggingTransaction):
+            txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            for renewal_period_in_ts in send_renewal_email_at:
+                txn.execute(
+                    """
+                    INSERT INTO email_status_account_validity (
+                        user_id,
+                        renewal_period_in_ts,
+                        email_sent
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (user_id, renewal_period_in_ts, email_sent)
+                )
+
+        await self._api.run_db_interaction(
+            "set_account_validity_for_user",
+            set_account_status_validity_for_user_txn,
         )
 
         await self._api.invalidate_cache(self.get_expiration_ts_for_user, (user_id,))
@@ -311,10 +378,10 @@ class EmailAccountValidityStore:
         return res
 
     async def set_renewal_token_for_user(
-        self,
-        user_id: str,
-        renewal_token: str,
-        token_format: TokenFormat,
+            self,
+            user_id: str,
+            renewal_token: str,
+            token_format: TokenFormat,
     ):
         """Store the given renewal token for the given user.
 
@@ -324,6 +391,7 @@ class EmailAccountValidityStore:
             token_format: The configured token format, used to determine which
                 column to update.
         """
+
         def set_renewal_token_for_user_txn(txn: LoggingTransaction):
             # We don't need to check if the token is unique since we've got unique
             # indexes to check that.
@@ -346,10 +414,10 @@ class EmailAccountValidityStore:
         )
 
     async def validate_renewal_token(
-        self,
-        renewal_token: str,
-        token_format: TokenFormat,
-        user_id: Optional[str] = None,
+            self,
+            renewal_token: str,
+            token_format: TokenFormat,
+            user_id: Optional[str] = None,
     ) -> Tuple[str, int, Optional[int]]:
         """Check if the provided renewal token is associating with a user, optionally
         validating the user it belongs to as well, and return the account renewal status
@@ -408,9 +476,9 @@ class EmailAccountValidityStore:
         )
 
     def set_expiration_date_for_user_txn(
-        self,
-        txn: LoggingTransaction,
-        user_id: str,
+            self,
+            txn: LoggingTransaction,
+            user_id: str,
     ):
         """Sets an expiration date to the account with the given user ID.
 
@@ -421,24 +489,44 @@ class EmailAccountValidityStore:
         expiration_ts = now_ms + self._period
 
         sql = """
-        INSERT INTO email_account_validity (user_id, expiration_ts_ms, email_sent)
-        VALUES (?, ?, ?)
+        INSERT INTO email_account_validity (user_id, expiration_ts_ms)
+        VALUES (?, ?)
         ON CONFLICT (user_id) DO
             UPDATE SET
-                expiration_ts_ms = EXCLUDED.expiration_ts_ms,
-                email_sent = EXCLUDED.email_sent
+                expiration_ts_ms = EXCLUDED.expiration_ts_ms
         """
 
-        txn.execute(sql, (user_id, expiration_ts, False))
+        txn.execute(sql, (user_id, expiration_ts))
+
+        txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+
+        sql = """
+                INSERT INTO email_status_account_validity (
+                    user_id,
+                    renewal_period_in_ts,
+                    email_sent
+                )
+                VALUES (?, ?, ?)
+        """
+
+        for renewal_period_in_ts in self._send_renewal_email_at:
+            txn.execute(sql, (user_id, renewal_period_in_ts, False))
 
         txn.call_after(self.get_expiration_ts_for_user.invalidate, (user_id,))
 
-    async def set_renewal_mail_status(self, user_id: str, email_sent: bool) -> None:
+    async def set_renewal_mail_status(self, user_id: str, renewal_period_in_ts: int, email_sent: bool) -> None:
         """Sets or unsets the flag that indicates whether a renewal email has been sent
         to the user (and the user hasn't renewed their account yet).
 
         Args:
             user_id: ID of the user to set/unset the flag for.
+            renewal_period_in_ts: renewal period to set/unset the flag for.
             email_sent: Flag which indicates whether a renewal email has been sent
                 to this user.
         """
@@ -446,8 +534,8 @@ class EmailAccountValidityStore:
         def set_renewal_mail_status_txn(txn: LoggingTransaction):
             DatabasePool.simple_update_one_txn(
                 txn=txn,
-                table="email_account_validity",
-                keyvalues={"user_id": user_id},
+                table="email_status_account_validity",
+                keyvalues={"user_id": user_id, "renewal_period_in_ts": renewal_period_in_ts},
                 updatevalues={"email_sent": email_sent},
             )
 
@@ -457,9 +545,9 @@ class EmailAccountValidityStore:
         )
 
     async def get_renewal_token_for_user(
-        self,
-        user_id: str,
-        token_format: TokenFormat,
+            self,
+            user_id: str,
+            token_format: TokenFormat,
     ) -> str:
         """Retrieve the renewal token for the given user.
 
