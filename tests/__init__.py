@@ -120,7 +120,7 @@ async def create_account_validity_module(config={}) -> EmailAccountValidity:
     config.update(
         {
             "period": "6w",
-            "renew_at": "1w",
+            "send_renewal_email_at": ["30d", "2w", "1w"],
         }
     )
 
