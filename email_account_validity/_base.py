@@ -142,6 +142,7 @@ class EmailAccountValidityBase:
             "expiration_ts": expiration_ts,
             "url": url,
             "renewal_token": renewal_token,
+            "nb_days_before_expiracy": self.calculate_days_until_expiration(expiration_ts) 
         }
 
         html_text = self._template_html.render(**template_vars)
@@ -156,6 +157,19 @@ class EmailAccountValidityBase:
             )
 
         await self._store.set_renewal_mail_status(user_id=user_id, renewal_period_in_ts=renewal_period_in_ts, email_sent=True)
+
+    def calculate_days_until_expiration(self, expiration_ts: int) -> int:
+        SECONDS_PER_DAY = 86400
+        # Check number of days before expiracy
+        now_ms = int(time.time() * 1000)
+        datediff_sec = int((expiration_ts - now_ms) / 1000)
+
+        if datediff_sec > 0:
+            datediff_days = datediff_sec // SECONDS_PER_DAY # convert difference of seconds to days
+        else:
+            datediff_days = 0
+
+        return datediff_days
 
     async def generate_authenticated_renewal_token(self, user_id: str) -> str:
         """Generates a 8-digit long random string then saves it into the database.

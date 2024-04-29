@@ -60,6 +60,7 @@ The templates the module will use are:
       variable will be `None`.
     * `renewal_token`: The token to use in order to renew the user's account. If
       `send_links` is set to `false`, templates should prefer this variable to `url`.
+    * `nb_days_before_expiracy`: Display number of days before expiration 
 * `account_renewed.html`: The HTML to display to a user when they successfully renew
   their account. It gets passed the following vaiables:
     * `expiration_ts`: A timestamp in milliseconds representing when the account will
