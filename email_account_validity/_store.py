@@ -146,7 +146,13 @@ class EmailAccountValidityStore:
             # of registered users on the homeserver.
             users_to_insert = {}
             for row in rows:
-                users_to_insert[row["user_id"]] = row
+                users_to_insert[row[0]] = {
+                        "user_id": row[0],
+                        "expiration_ts_ms": row[1],
+                        "email_sent": False,
+                        "renewal_token": row[2],
+                        "token_used_ts_ms": row[3],
+                    }
 
             # Look for users that are registered but don't have a state in the
             # account_validity table, and set a default state for them. This default
