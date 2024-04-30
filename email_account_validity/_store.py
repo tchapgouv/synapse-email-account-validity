@@ -137,7 +137,6 @@ class EmailAccountValidityStore:
                 retcols=(
                     "user_id",
                     "expiration_ts_ms",
-                    "email_sent",
                     "renewal_token",
                     "token_used_ts_ms",
                 ),
@@ -147,13 +146,7 @@ class EmailAccountValidityStore:
             # of registered users on the homeserver.
             users_to_insert = {}
             for row in rows:
-                users_to_insert[row[0]] = {
-                        "user_id": row[0],
-                        "expiration_ts_ms": row[1],
-                        "email_sent": row[2],
-                        "renewal_token": row[3],
-                        "token_used_ts_ms": row[4],
-                    }
+                users_to_insert[row["user_id"]] = row
 
             # Look for users that are registered but don't have a state in the
             # account_validity table, and set a default state for them. This default
