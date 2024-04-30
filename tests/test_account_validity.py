@@ -314,6 +314,18 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 """,
                 (),
             )
+            txn.execute(
+                """
+                INSERT INTO account_validity VALUES (
+                    "@john.doe-synapse.org:dev01.synapse.org",
+                    1700823100,
+                    false,
+                    "mytoken",
+                    1700823160
+                );
+                """,
+                (),
+            )
 
         populate_users = True
         module = await create_account_validity_module()
