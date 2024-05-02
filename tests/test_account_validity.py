@@ -275,6 +275,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 password_hash TEXT,
                 creation_ts BIGINT UNSIGNED,
                 admin BOOL DEFAULT 0 NOT NULL,
+                deactivated smallint DEFAULT 0 NOT NULL,
                 UNIQUE(name)
                 );
                 """,
@@ -286,6 +287,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                     "@jane.doe-synapse.org:dev01.synapse.org",
                     "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
                     1700823133,
+                    0,
                     0
                 );
                 """,
@@ -297,7 +299,20 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                     "@john.doe-synapse.org:dev01.synapse.org",
                     "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
                     1700823160,
+                    0,
                     0
+                );
+                """,
+                (),
+            )
+            txn.execute(
+                """
+                INSERT INTO users VALUES (
+                    "@lex.luthor-synapse.org:dev01.synapse.org",
+                    "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+                    1700823160,
+                    0,
+                    1
                 );
                 """,
                 (),
@@ -310,6 +325,18 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                     email_sent boolean NOT NULL,
                     renewal_token text,
                     token_used_ts_ms bigint
+                );
+                """,
+                (),
+            )
+            txn.execute(
+                """
+                INSERT INTO account_validity VALUES (
+                    "@john.doe-synapse.org:dev01.synapse.org",
+                    1700823100,
+                    false,
+                    "mytoken",
+                    1700823160
                 );
                 """,
                 (),

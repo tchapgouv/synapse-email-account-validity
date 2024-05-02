@@ -116,6 +116,7 @@ class EmailAccountValidityStore:
                 LEFT JOIN email_account_validity
                     ON (users.name = email_account_validity.user_id)
                 WHERE email_account_validity.user_id IS NULL
+                AND users.deactivated = 0
                 LIMIT ?
                 """,
                 (batch_size,),
@@ -125,28 +126,9 @@ class EmailAccountValidityStore:
             if not missing_users:
                 return 0
 
-            # Figure out the state of these users in the account_validity table.
-            # Note that at some point we'll want to get rid of the account_validity table
-            # and we'll need to get rid of this code as well.
-            rows = DatabasePool.simple_select_many_txn(
-                txn=txn,
-                table="account_validity",
-                column="user_id",
-                iterable=tuple([user[0] for user in missing_users]),
-                keyvalues={},
-                retcols=(
-                    "user_id",
-                    "expiration_ts_ms",
-                    "renewal_token",
-                    "token_used_ts_ms",
-                ),
-            )
-
             # Turn the results into a dictionary so we can later merge it with the list
             # of registered users on the homeserver.
             users_to_insert = {}
-            for row in rows:
-                users_to_insert[row["user_id"]] = row
 
             # Look for users that are registered but don't have a state in the
             # account_validity table, and set a default state for them. This default
