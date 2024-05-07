@@ -82,6 +82,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
             period=parse_duration(config["period"]),
             send_renewal_email_at=[parse_duration(x) for x in send_renewal_email_at],
             renewal_email_subject=config.get("renewal_email_subject"),
+            exclude_domains=config.get("exclude_domains"),
             send_links=config.get("send_links", True)
         )
         return parsed_config
@@ -146,6 +147,8 @@ class EmailAccountValidity(EmailAccountValidityBase):
         Args:
             user_id: The ID of the newly registered user to set an expiration date for.
         """
+        if self.user_id_is_in_excluded_domains(user_id):
+            return
         await self._store.set_expiration_date_for_user(user_id)
 
     async def _send_renewal_emails(self):

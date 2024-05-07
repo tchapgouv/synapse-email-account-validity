@@ -49,6 +49,7 @@ class EmailAccountValidityBase:
         self._period = config.period
         self._send_renewal_email_at = config.send_renewal_email_at
         self._send_links = config.send_links
+        self._exclude_domains = config.exclude_domains
 
         (self._template_html, self._template_text,) = api.read_templates(
             ["notice_expiry.html", "notice_expiry.txt"],
@@ -295,6 +296,12 @@ class EmailAccountValidityBase:
 
         return True, False, new_expiration_ts
 
+    def user_id_is_in_excluded_domains(self, user_id):
+        for domain_to_exclude in self._exclude_domains:
+            if f"-{domain_to_exclude}" in user_id:
+                return True
+        return False
+
     async def renew_account_for_user(
         self,
         user_id: str,
@@ -317,6 +324,8 @@ class EmailAccountValidityBase:
             New expiration date for this account, as a timestamp in
             milliseconds since epoch.
         """
+        if self.user_id_is_in_excluded_domains(user_id):
+            return
         now = int(time.time() * 1000)
         if expiration_ts is None:
             expiration_ts = now + self._period

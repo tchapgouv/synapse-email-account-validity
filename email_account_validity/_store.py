@@ -37,6 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self._period = config.period
+        self._exclude_domains = config.exclude_domains
         self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
@@ -110,15 +111,21 @@ class EmailAccountValidityStore:
         def populate_table_txn(txn: LoggingTransaction, batch_size: int) -> int:
             # Populate the database with the users that are in the users table but not in
             # the email_account_validity one.
-            txn.execute(
-                """
+            sql_users = """
                 SELECT users.name FROM users
                 LEFT JOIN email_account_validity
                     ON (users.name = email_account_validity.user_id)
                 WHERE email_account_validity.user_id IS NULL
                 AND users.deactivated = 0
-                LIMIT ?
-                """,
+                """
+
+            if self._exclude_domains and len(self._exclude_domains) > 0:
+                for k in self._exclude_domains:
+                    sql_users += f" AND users.name NOT LIKE '%-{k}%'"
+            sql_users += " LIMIT ?"
+
+            txn.execute(
+                sql_users,
                 (batch_size,),
             )
 

@@ -121,6 +121,7 @@ async def create_account_validity_module(config={}) -> EmailAccountValidity:
         {
             "period": "6w",
             "send_renewal_email_at": ["30d", "2w", "1w"],
+            "exclude_domains": ["test1.test4.org", "test1.test2.org"]
         }
     )
 
