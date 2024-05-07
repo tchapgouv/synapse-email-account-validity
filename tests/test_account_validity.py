@@ -30,7 +30,7 @@ from tests import create_account_validity_module
 
 class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
     async def test_user_expired(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         now_ms = int(time.time() * 1000)
@@ -64,7 +64,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         self.assertTrue(expired)
 
     async def test_on_user_registration(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Test that the user doesn't have an expiration date in the database. This acts
@@ -88,7 +88,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
 
 class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
     async def test_send_email(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Set the side effect of get_threepids_for_user so that it returns a threepid on
@@ -150,7 +150,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertEqual(module._api.send_mail.call_count, 1)
 
     async def test_renewal_token(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Insert a row with an expiration timestamp and a renewal token for this user.
@@ -237,7 +237,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertEqual(exception.code, 500)
 
     async def test_send_link_false(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         # Create a module with a configuration forbidding it to send links via email.
         module = await create_account_validity_module({"send_links": False})
 
@@ -366,19 +366,19 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         module = await create_account_validity_module()
         now_ms = int(time.time() * 1000)
 
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         user_id_date = now_ms + (6 * 24 * 60 * 60 * 1000)  # 6 days ahead
         await module.renew_account_for_user(
             user_id=user_id,
             expiration_ts=user_id_date,
         )
-        user_id2 = "@joe:test"
+        user_id2 = "@joe-test:homeserver1"
         user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # 14 days ahead
         await module.renew_account_for_user(
             user_id=user_id2,
             expiration_ts=user_id_date2,
         )
-        user_id3 = "@albert:test"
+        user_id3 = "@albert-test:homeserver1"
         user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # 60 days ahead
         await module.renew_account_for_user(
             user_id=user_id3,
@@ -397,15 +397,15 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         now_ms = int(time.time() * 1000)
 
         threepids = {
-            "@izzy:test": [{
+            "@izzy-test:homeserver1": [{
                 "medium": "email",
                 "address": "izzy@test",
             }],
-            "@joe:test": [{
+            "@joe-test:homeserver1": [{
                 "medium": "email",
                 "address": "joe@test",
             }],
-            "@albert:test": [{
+            "@albert-test:homeserver1": [{
                 "medium": "email",
                 "address": "albert@test",
             }],
@@ -416,19 +416,19 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
 
         module._api.get_threepids_for_user.side_effect = get_threepids
 
-        user_id1 = "@izzy:test"
+        user_id1 = "@izzy-test:homeserver1"
         user_id_date1 = now_ms + (6 * 24 * 60 * 60 * 1000)  # will expire 6 days
         await module.renew_account_for_user(
             user_id=user_id1,
             expiration_ts=user_id_date1,
         )
-        user_id2 = "@joe:test"
+        user_id2 = "@joe-test:homeserver1"
         user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # will expire 14 days
         await module.renew_account_for_user(
             user_id=user_id2,
             expiration_ts=user_id_date2,
         )
-        user_id3 = "@albert:test"
+        user_id3 = "@albert-test:homeserver1"
         user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # will expire 60 days
         await module.renew_account_for_user(
             user_id=user_id3,
