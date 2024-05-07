@@ -39,6 +39,8 @@ modules:
       # authenticated request to the server.
       # Defaults to true.
       send_links: true
+      # Overrides the subject of the renewal email
+      renewal_email_subject: "Renew Your Tchap Account"
 ```
 
 The syntax for durations is the same as in the rest of Synapse's configuration file.
