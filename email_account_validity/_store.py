@@ -119,14 +119,17 @@ class EmailAccountValidityStore:
                 AND users.deactivated = 0
                 """
 
+            sql_args = []
             if self._exclude_domains and len(self._exclude_domains) > 0:
                 for k in self._exclude_domains:
-                    sql_users += f" AND users.name NOT LIKE '%-{k}%'"
+                    sql_users += f" AND users.name NOT LIKE ?"
+                    sql_args.append(f"%-{k}%")
             sql_users += " LIMIT ?"
+            sql_args.append(batch_size)
 
             txn.execute(
                 sql_users,
-                (batch_size,),
+                tuple(sql_args),
             )
 
             missing_users = txn.fetchall()
