@@ -82,7 +82,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
             period=parse_duration(config["period"]),
             send_renewal_email_at=[parse_duration(x) for x in send_renewal_email_at],
             renewal_email_subject=config.get("renewal_email_subject"),
-            exclude_user_id_patterns=config.get("exclude_user_id_patterns"),
+            exclude_user_id_patterns=config.get("exclude_user_id_patterns", []),
             send_links=config.get("send_links", True)
         )
         return parsed_config
