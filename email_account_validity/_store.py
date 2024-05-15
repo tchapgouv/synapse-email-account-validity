@@ -37,7 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self._period = config.period
-        self._exclude_domains = config.exclude_domains
+        self._exclude_user_id_patterns = config.exclude_user_id_patterns
         self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
@@ -120,10 +120,10 @@ class EmailAccountValidityStore:
                 """
 
             sql_args = []
-            if self._exclude_domains and len(self._exclude_domains) > 0:
-                for k in self._exclude_domains:
+            if self._exclude_user_id_patterns and len(self._exclude_user_id_patterns) > 0:
+                for k in self._exclude_user_id_patterns:
                     sql_users += f" AND users.name NOT LIKE ?"
-                    sql_args.append(f"%-{k}%")
+                    sql_args.append(f"%{k}%")
             sql_users += " LIMIT ?"
             sql_args.append(batch_size)
 

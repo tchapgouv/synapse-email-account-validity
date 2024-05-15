@@ -41,9 +41,10 @@ modules:
       send_links: true
       # Overrides the subject of the renewal email
       renewal_email_subject: "Renew Your Tchap Account"
-      exclude_domains: 
-        - "test1.test4.org"
-        - "test1.test2.org"
+      # Deactivate this module for user_id containing this list of patterns
+      exclude_user_id_patterns: 
+        - "-test1.test4.org"
+        - "-test1.test2.org"
 ```
 
 The syntax for durations is the same as in the rest of Synapse's configuration file.

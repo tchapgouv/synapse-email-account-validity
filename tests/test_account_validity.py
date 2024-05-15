@@ -88,7 +88,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         expired = await module.is_user_expired(user_id=user_id)
         self.assertTrue(expired)
 
-    async def test_user_expired_on_excluded_domains(self):
+    async def test_user_expired_on_excluded_user_id_patterns(self):
         user_id = "@chloe-test1.test2.org:dev01.synapse.org"
         module = await create_account_validity_module()
 
@@ -111,7 +111,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         expired = await module.is_user_expired(user_id=user_id)
         self.assertIsNone(expired)
 
-    async def test_user_expired_on_excluded_domains_and_existing_users(self):
+    async def test_user_expired_on_excluded_user_id_patterns_and_existing_users(self):
         user_id = "@chloe-test1.test2.org:dev01.synapse.org"
         module = await create_account_validity_module()
 
@@ -173,7 +173,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         self.assertIsInstance(expiration_ts, int)
         self.assertGreater(expiration_ts, now_ms)
 
-    async def test_on_user_registration_for_excluded_domain(self):
+    async def test_on_user_registration_for_excluded_user_id_patterns(self):
         user_id = "@chloe-test1.test2.org:dev01.synapse.org"
         module = await create_account_validity_module()
 
@@ -193,7 +193,7 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
 
         self.assertIsNone(expiration_ts)
 
-    async def test_on_user_registration_for_excluded_domain_and_existing_users(self):
+    async def test_on_user_registration_for_excluded_user_id_patterns_and_existing_users(self):
         user_id = "@chloe-test1.test2.org:dev01.synapse.org"
         module = await create_account_validity_module()
         await module._store._api.run_db_interaction("", populate_email_account_validity_with_existing_user, user_id)
