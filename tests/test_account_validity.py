@@ -460,6 +460,18 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 """,
                 (),
             )
+            # txn.execute(
+            #     """
+            #     INSERT INTO users VALUES (
+            #         "@existing.user-test1.test2.org:dev01.synapse.org",
+            #         "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            #         1700823160,
+            #         0,
+            #         0
+            #     );
+            #     """,
+            #     (),
+            # )
             txn.execute(
                 """
                 INSERT INTO users VALUES (
@@ -525,12 +537,14 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         module = await create_account_validity_module()
         await module._store._api.run_db_interaction("create_user_table", create_user_table, )
 
+        user_id = "@existing.user-test1.test2.org:dev01.synapse.org"
+        await module._store._api.run_db_interaction("", populate_email_account_validity_with_existing_user, user_id)
+
         await module._store.create_and_populate_table(populate_users)
 
         def check_email_account_validity(txn: LoggingTransaction):
             txn.execute("SELECT user_id FROM email_account_validity", ())
             return txn.fetchall()
-
         res = await module._store._api.run_db_interaction("", check_email_account_validity, )
         self.assertEqual(3, len(res))
 

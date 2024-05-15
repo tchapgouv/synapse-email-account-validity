@@ -212,9 +212,39 @@ class EmailAccountValidityStore:
 
             return len(missing_users)
 
+        def delete_email_account_validity_txn(txn: LoggingTransaction):
+            sql_args = [1, 0]
+            where_clauses = " WHERE ?=?"
+            if self._exclude_user_id_patterns and len(self._exclude_user_id_patterns) > 0:
+                for k in self._exclude_user_id_patterns:
+                    where_clauses += f" OR user_id LIKE ?"
+                    sql_args.append(f"%{k}%")
+
+                sql_stmt = """
+                    DELETE FROM email_status_account_validity
+                """ + where_clauses
+
+                txn.execute(
+                    sql_stmt,
+                    tuple(sql_args),
+                )
+
+                sql_stmt = """
+                    DELETE FROM email_account_validity
+                """ + where_clauses
+                txn.execute(
+                    sql_stmt,
+                    tuple(sql_args),
+                )
+
         await self._api.run_db_interaction(
             "account_validity_create_table",
             create_table_txn,
+        )
+
+        await self._api.run_db_interaction(
+            "delete_email_account_validity_for_user_txn",
+            delete_email_account_validity_txn
         )
 
         if populate_users:
