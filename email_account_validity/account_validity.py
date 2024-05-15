@@ -134,6 +134,8 @@ class EmailAccountValidity(EmailAccountValidityBase):
             A boolean indicating if the user has expired, or None if the module could not
             figure it out (i.e. if the user has no expiration timestamp).
         """
+        if self.user_id_is_in_excluded_domains(user_id):
+            return None
         expiration_ts = await self._store.get_expiration_ts_for_user(user_id)
         if expiration_ts is None:
             return None
@@ -148,8 +150,9 @@ class EmailAccountValidity(EmailAccountValidityBase):
             user_id: The ID of the newly registered user to set an expiration date for.
         """
         if self.user_id_is_in_excluded_domains(user_id):
-            return
-        await self._store.set_expiration_date_for_user(user_id)
+            await self._store.deactivate_account_validity_for_user(user_id)
+        else:
+            await self._store.set_expiration_date_for_user(user_id)
 
     async def _send_renewal_emails(self):
         """Gets the list of users whose account is expiring in the amount of time

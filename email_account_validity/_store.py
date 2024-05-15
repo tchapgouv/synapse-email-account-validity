@@ -564,3 +564,31 @@ class EmailAccountValidityStore:
             "get_renewal_token_for_user",
             get_renewal_token_txn,
         )
+
+    async def deactivate_account_validity_for_user(self, user_id: str) -> None:
+        def delete_email_account_validity_for_user_txn(
+            txn: LoggingTransaction,
+            user_id: str
+        ):
+            txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            txn.execute(
+                """
+                DELETE FROM email_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            txn.call_after(self.get_expiration_ts_for_user.invalidate, (user_id,))
+
+        await self._api.run_db_interaction(
+            "delete_email_account_validity_for_user_txn",
+            delete_email_account_validity_for_user_txn,
+            user_id,
+        )
+

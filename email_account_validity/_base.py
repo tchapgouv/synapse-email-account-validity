@@ -325,7 +325,9 @@ class EmailAccountValidityBase:
             milliseconds since epoch.
         """
         if self.user_id_is_in_excluded_domains(user_id):
+            await self._store.deactivate_account_validity_for_user(user_id)
             return
+
         now = int(time.time() * 1000)
         if expiration_ts is None:
             expiration_ts = now + self._period
