@@ -28,9 +28,34 @@ from email_account_validity._utils import LONG_TOKEN_REGEX, SHORT_TOKEN_REGEX, T
 from tests import create_account_validity_module
 
 
+def populate_email_account_validity_with_existing_user(txn: LoggingTransaction, user_id: str):
+    txn.execute(
+        f"""
+        INSERT INTO email_account_validity VALUES (
+            '{user_id}',
+            1716277516832,
+            null,
+            null,
+            null
+        );
+        """,
+        (),
+    )
+    txn.execute(
+        f"""
+        INSERT INTO email_status_account_validity VALUES (
+            '{user_id}',
+            1728000000,
+            false
+        );
+        """,
+        (),
+    )
+
+
 class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
     async def test_user_expired(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         now_ms = int(time.time() * 1000)
@@ -63,8 +88,71 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         expired = await module.is_user_expired(user_id=user_id)
         self.assertTrue(expired)
 
+    async def test_user_expired_on_excluded_user_id_patterns(self):
+        user_id = "@chloe-test1.test2.org:dev01.synapse.org"
+        module = await create_account_validity_module()
+
+        now_ms = int(time.time() * 1000)
+        one_hour_ago = now_ms - 3600000
+
+        # Test that, if the user isn't known, the module says it can't determine whether
+        # they've expired.
+        expired = await module.is_user_expired(user_id=user_id)
+
+        self.assertIsNone(expired)
+
+        # Test that, if an excluded user try to set its expiration timestamp in the past, the module still says
+        # the user is not expired
+        await module.renew_account_for_user(
+            user_id=user_id,
+            expiration_ts=one_hour_ago,
+        )
+
+        expired = await module.is_user_expired(user_id=user_id)
+        self.assertIsNone(expired)
+
+    async def test_user_expired_on_excluded_user_id_patterns_and_existing_users(self):
+        user_id = "@chloe-test1.test2.org:dev01.synapse.org"
+        module = await create_account_validity_module()
+
+        await module._store._api.run_db_interaction("", populate_email_account_validity_with_existing_user, user_id)
+
+        # Test that, if an excluded user has a past timestamps, the module still says
+        # the user is not expired
+        expired = await module.is_user_expired(user_id=user_id)
+
+        self.assertIsNone(expired)
+
+        now_ms = int(time.time() * 1000)
+        one_hour_ago = now_ms - 3600000
+
+        # Test that, if an excluded user try to set its expiration timestamp in the past, the module still says
+        # the user is not expired
+        await module.renew_account_for_user(
+            user_id=user_id,
+            expiration_ts=one_hour_ago,
+        )
+
+        expired = await module.is_user_expired(user_id=user_id)
+
+        self.assertIsNone(expired)
+
+        def check_email_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_account_validity, )
+        self.assertEqual(0, len(res))
+
+        def check_email_status_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_status_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(0, len(res))
+
     async def test_on_user_registration(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Test that the user doesn't have an expiration date in the database. This acts
@@ -85,10 +173,65 @@ class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
         self.assertIsInstance(expiration_ts, int)
         self.assertGreater(expiration_ts, now_ms)
 
+    async def test_on_user_registration_for_excluded_user_id_patterns(self):
+        user_id = "@chloe-test1.test2.org:dev01.synapse.org"
+        module = await create_account_validity_module()
+
+        # Test that the user doesn't have an expiration date in the database. This acts
+        # as a safeguard against old databases, and also adds an entry to the cache for
+        # get_expiration_ts_for_user so we're sure later in the test that we've correctly
+        # invalidated it.
+        expiration_ts = await module._store.get_expiration_ts_for_user(user_id)
+
+        self.assertIsNone(expiration_ts)
+
+        # Call the registration hook and test that the user now has an expiration
+        # timestamp that's ahead of now.
+        await module.on_user_registration(user_id)
+
+        expiration_ts = await module._store.get_expiration_ts_for_user(user_id)
+
+        self.assertIsNone(expiration_ts)
+
+    async def test_on_user_registration_for_excluded_user_id_patterns_and_existing_users(self):
+        user_id = "@chloe-test1.test2.org:dev01.synapse.org"
+        module = await create_account_validity_module()
+        await module._store._api.run_db_interaction("", populate_email_account_validity_with_existing_user, user_id)
+
+        # Test that the user doesn't have an expiration date in the database. This acts
+        # as a safeguard against old databases, and also adds an entry to the cache for
+        # get_expiration_ts_for_user so we're sure later in the test that we've correctly
+        # invalidated it.
+        expiration_ts = await module._store.get_expiration_ts_for_user(user_id)
+
+        self.assertEqual(1716277516832, expiration_ts)
+
+        # Call the registration hook and test that the user now has an expiration
+        # timestamp that's ahead of now.
+        await module.on_user_registration(user_id)
+
+        expiration_ts = await module._store.get_expiration_ts_for_user(user_id)
+
+        self.assertIsNone(expiration_ts)
+
+        def check_email_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_account_validity, )
+        self.assertEqual(0, len(res))
+
+        def check_email_status_account_validity(txn: LoggingTransaction):
+            txn.execute("SELECT user_id FROM email_status_account_validity", ())
+            return txn.fetchall()
+
+        res = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
+        self.assertEqual(0, len(res))
+
 
 class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
     async def test_send_email(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Set the side effect of get_threepids_for_user so that it returns a threepid on
@@ -99,7 +242,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
             "address": "izzy@test",
         }]
 
-        async def get_threepids(user_id):
+        async def get_threepids(_):
             return threepids
 
         module._api.get_threepids_for_user.side_effect = get_threepids
@@ -150,7 +293,7 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertEqual(module._api.send_mail.call_count, 1)
 
     async def test_renewal_token(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         module = await create_account_validity_module()
 
         # Insert a row with an expiration timestamp and a renewal token for this user.
@@ -237,11 +380,11 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertEqual(exception.code, 500)
 
     async def test_send_link_false(self):
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         # Create a module with a configuration forbidding it to send links via email.
         module = await create_account_validity_module({"send_links": False})
 
-        async def get_threepids(user_id):
+        async def get_threepids(_):
             return [{
                 "medium": "email",
                 "address": "izzy@test",
@@ -317,6 +460,54 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
                 """,
                 (),
             )
+            # txn.execute(
+            #     """
+            #     INSERT INTO users VALUES (
+            #         "@existing.user-test1.test2.org:dev01.synapse.org",
+            #         "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            #         1700823160,
+            #         0,
+            #         0
+            #     );
+            #     """,
+            #     (),
+            # )
+            txn.execute(
+                """
+                INSERT INTO users VALUES (
+                    "@chloe-test1.test2.org:dev01.synapse.org",
+                    "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+                    1700823160,
+                    0,
+                    0
+                );
+                """,
+                (),
+            )
+            txn.execute(
+                """
+                INSERT INTO users VALUES (
+                    "@john-test1.test3.org:test1.test4.org",
+                    "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+                    1700823160,
+                    0,
+                    0
+                );
+                """,
+                (),
+            )
+            txn.execute(
+                """
+                INSERT INTO users VALUES (
+                    "@john-test1.test4.org4:dev01.synapse.org",
+                    "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+                    1700823160,
+                    0,
+                    0
+                );
+                """,
+                (),
+            )
             txn.execute(
                 """
                 CREATE TABLE account_validity (
@@ -346,39 +537,41 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         module = await create_account_validity_module()
         await module._store._api.run_db_interaction("create_user_table", create_user_table, )
 
+        user_id = "@existing.user-test1.test2.org:dev01.synapse.org"
+        await module._store._api.run_db_interaction("", populate_email_account_validity_with_existing_user, user_id)
+
         await module._store.create_and_populate_table(populate_users)
 
         def check_email_account_validity(txn: LoggingTransaction):
             txn.execute("SELECT user_id FROM email_account_validity", ())
             return txn.fetchall()
+        res = await module._store._api.run_db_interaction("", check_email_account_validity, )
+        self.assertEqual(3, len(res))
 
         def check_email_status_account_validity(txn: LoggingTransaction):
             txn.execute("SELECT user_id FROM email_status_account_validity", ())
             return txn.fetchall()
 
-        res = await module._store._api.run_db_interaction("", check_email_account_validity, )
-        self.assertEqual(2, len(res))
-
         res = await module._store._api.run_db_interaction("", check_email_status_account_validity, )
-        self.assertEqual(6, len(res))
+        self.assertEqual(9, len(res))
 
     async def test_get_users_expiring_soon(self):
         module = await create_account_validity_module()
         now_ms = int(time.time() * 1000)
 
-        user_id = "@izzy:test"
+        user_id = "@izzy-test:homeserver1"
         user_id_date = now_ms + (6 * 24 * 60 * 60 * 1000)  # 6 days ahead
         await module.renew_account_for_user(
             user_id=user_id,
             expiration_ts=user_id_date,
         )
-        user_id2 = "@joe:test"
+        user_id2 = "@joe-test:homeserver1"
         user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # 14 days ahead
         await module.renew_account_for_user(
             user_id=user_id2,
             expiration_ts=user_id_date2,
         )
-        user_id3 = "@albert:test"
+        user_id3 = "@albert-test:homeserver1"
         user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # 60 days ahead
         await module.renew_account_for_user(
             user_id=user_id3,
@@ -397,15 +590,15 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         now_ms = int(time.time() * 1000)
 
         threepids = {
-            "@izzy:test": [{
+            "@izzy-test:homeserver1": [{
                 "medium": "email",
                 "address": "izzy@test",
             }],
-            "@joe:test": [{
+            "@joe-test:homeserver1": [{
                 "medium": "email",
                 "address": "joe@test",
             }],
-            "@albert:test": [{
+            "@albert-test:homeserver1": [{
                 "medium": "email",
                 "address": "albert@test",
             }],
@@ -416,19 +609,19 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
 
         module._api.get_threepids_for_user.side_effect = get_threepids
 
-        user_id1 = "@izzy:test"
+        user_id1 = "@izzy-test:homeserver1"
         user_id_date1 = now_ms + (6 * 24 * 60 * 60 * 1000)  # will expire 6 days
         await module.renew_account_for_user(
             user_id=user_id1,
             expiration_ts=user_id_date1,
         )
-        user_id2 = "@joe:test"
+        user_id2 = "@joe-test:homeserver1"
         user_id_date2 = now_ms + (14 * 24 * 60 * 60 * 1000)  # will expire 14 days
         await module.renew_account_for_user(
             user_id=user_id2,
             expiration_ts=user_id_date2,
         )
-        user_id3 = "@albert:test"
+        user_id3 = "@albert-test:homeserver1"
         user_id_date3 = now_ms + (60 * 24 * 60 * 60 * 1000)  # will expire 60 days
         await module.renew_account_for_user(
             user_id=user_id3,

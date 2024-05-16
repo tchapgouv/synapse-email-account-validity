@@ -22,4 +22,5 @@ class EmailAccountValidityConfig:
     period: int
     send_renewal_email_at: List[int]
     renewal_email_subject: Optional[str] = None
+    exclude_user_id_patterns: List[str] = []
     send_links: bool = True

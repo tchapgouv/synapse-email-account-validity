@@ -37,6 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self._period = config.period
+        self._exclude_user_id_patterns = config.exclude_user_id_patterns
         self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
@@ -110,16 +111,25 @@ class EmailAccountValidityStore:
         def populate_table_txn(txn: LoggingTransaction, batch_size: int) -> int:
             # Populate the database with the users that are in the users table but not in
             # the email_account_validity one.
-            txn.execute(
-                """
+            sql_users = """
                 SELECT users.name FROM users
                 LEFT JOIN email_account_validity
                     ON (users.name = email_account_validity.user_id)
                 WHERE email_account_validity.user_id IS NULL
                 AND users.deactivated = 0
-                LIMIT ?
-                """,
-                (batch_size,),
+                """
+
+            sql_args = []
+            if self._exclude_user_id_patterns and len(self._exclude_user_id_patterns) > 0:
+                for k in self._exclude_user_id_patterns:
+                    sql_users += f" AND users.name NOT LIKE ?"
+                    sql_args.append(f"%{k}%")
+            sql_users += " LIMIT ?"
+            sql_args.append(batch_size)
+
+            txn.execute(
+                sql_users,
+                tuple(sql_args),
             )
 
             missing_users = txn.fetchall()
@@ -202,9 +212,39 @@ class EmailAccountValidityStore:
 
             return len(missing_users)
 
+        def delete_email_account_validity_txn(txn: LoggingTransaction):
+            sql_args = [1, 0]
+            where_clauses = " WHERE ?=?"
+            if self._exclude_user_id_patterns and len(self._exclude_user_id_patterns) > 0:
+                for k in self._exclude_user_id_patterns:
+                    where_clauses += f" OR user_id LIKE ?"
+                    sql_args.append(f"%{k}%")
+
+                sql_stmt = """
+                    DELETE FROM email_status_account_validity
+                """ + where_clauses
+
+                txn.execute(
+                    sql_stmt,
+                    tuple(sql_args),
+                )
+
+                sql_stmt = """
+                    DELETE FROM email_account_validity
+                """ + where_clauses
+                txn.execute(
+                    sql_stmt,
+                    tuple(sql_args),
+                )
+
         await self._api.run_db_interaction(
             "account_validity_create_table",
             create_table_txn,
+        )
+
+        await self._api.run_db_interaction(
+            "delete_email_account_validity_for_user_txn",
+            delete_email_account_validity_txn
         )
 
         if populate_users:
@@ -220,6 +260,7 @@ class EmailAccountValidityStore:
                     "Inserted %s users in the email account validity table",
                     processed_rows,
                 )
+        logger.info("Creation and population of the email account validity tables is now completed.")
 
     async def get_users_expiring_soon(self) -> List[Dict[str, Union[str, int]]]:
         """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
@@ -554,3 +595,31 @@ class EmailAccountValidityStore:
             "get_renewal_token_for_user",
             get_renewal_token_txn,
         )
+
+    async def deactivate_account_validity_for_user(self, user_id: str) -> None:
+        def delete_email_account_validity_for_user_txn(
+            txn: LoggingTransaction,
+            user_id: str
+        ):
+            txn.execute(
+                """
+                DELETE FROM email_status_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            txn.execute(
+                """
+                DELETE FROM email_account_validity 
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            txn.call_after(self.get_expiration_ts_for_user.invalidate, (user_id,))
+
+        await self._api.run_db_interaction(
+            "delete_email_account_validity_for_user_txn",
+            delete_email_account_validity_for_user_txn,
+            user_id,
+        )
+
