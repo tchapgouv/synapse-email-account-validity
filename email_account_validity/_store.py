@@ -260,6 +260,7 @@ class EmailAccountValidityStore:
                     "Inserted %s users in the email account validity table",
                     processed_rows,
                 )
+        logger.info("Creation and population of the email account validity tables is now completed.")
 
     async def get_users_expiring_soon(self) -> List[Dict[str, Union[str, int]]]:
         """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
