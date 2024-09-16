@@ -51,6 +51,13 @@ class EmailAccountValidity(EmailAccountValidityBase):
             self._send_renewal_emails, 30 * 60 * 1000
         )
 
+        if config.deactivate_expired_account_period:
+            self._api.looping_background_call(
+                self._deactivate_expired_account, 60 * 60 * 1000
+            )
+        else:
+            logger.info("The feature to deactivate expired account is NOT enabled")
+
         self._api.register_account_validity_callbacks(
             is_user_expired=self.is_user_expired,
             on_user_registration=self.on_user_registration,
@@ -78,12 +85,18 @@ class EmailAccountValidity(EmailAccountValidityBase):
 
         send_renewal_email_at = [x.strip() for x in config["send_renewal_email_at"]]
 
+        deactivate_expired_account_period = None
+        if "deactivate_expired_account_period" in config:
+            deactivate_expired_account_period = parse_duration(config["deactivate_expired_account_period"])
+
         parsed_config = EmailAccountValidityConfig(
             period=parse_duration(config["period"]),
             send_renewal_email_at=[parse_duration(x) for x in send_renewal_email_at],
             renewal_email_subject=config.get("renewal_email_subject"),
             exclude_user_id_patterns=config.get("exclude_user_id_patterns", []),
-            send_links=config.get("send_links", True)
+            send_links=config.get("send_links", True),
+            deactivate_expired_account_period=deactivate_expired_account_period,
+            admin_access_token=config.get("admin_access_token", None)
         )
         return parsed_config
 
@@ -171,7 +184,24 @@ class EmailAccountValidity(EmailAccountValidityBase):
                         "User %s has no expiration ts, ignoring" % user["user_id"],
                     )
                     continue
-                logger.debug(f"Sending renewal emails to user_id={user[0]}, expiration_ts={user[1]}, renewal_period_in_ts={user[2]}")
+                logger.debug(f"Sending renewal emails to user_id={user[0]}"
+                             f", expiration_ts={user[1]}"
+                             f", renewal_period_in_ts={user[2]}")
                 await self.send_renewal_email(
                     user_id=user[0], expiration_ts=user[1], renewal_period_in_ts=user[2]
                 )
+
+    async def _deactivate_expired_account(self):
+        """Deactivate users whose account has expired since ``deactivate_expired_account_period``
+        """
+        logger.info("Deactivating expired account")
+        expired_users = await self._store.get_expired_users()
+        nb_expired_users = len(expired_users)
+        count = 0
+        if expired_users:
+            for user in expired_users:
+                result = await self.deactivate_account(user_id=user[0])
+                if result:
+                    count = count + 1
+                    logger.debug(f"{count}/{nb_expired_users} deactivated account - user_id={user[0]} - done")
+        logger.info(f"Deactivate expired account - {count}/{nb_expired_users} users")
