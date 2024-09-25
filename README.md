@@ -47,8 +47,6 @@ modules:
         - "-test1.test2.org"
       # How long do we wait after the expiration date to deactivate an account  
       deactivate_expired_account_period: 120d
-      # Admin token to enable deactivaton of accounts
-      admin_access_token: ADMINTOKEN
 ```
 
 The syntax for durations is the same as in the rest of Synapse's configuration file.

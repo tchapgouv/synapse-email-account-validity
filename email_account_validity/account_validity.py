@@ -52,9 +52,11 @@ class EmailAccountValidity(EmailAccountValidityBase):
         )
 
         if config.deactivate_expired_account_period:
-            self._api.looping_background_call(
-                self._deactivate_expired_account, 60 * 60 * 1000
-            )
+            if self._api.worker_name is None:
+                self._api.looping_background_call(
+                    self._deactivate_expired_account, 60 * 60 * 1000,
+                    run_on_all_instances=True
+                )
         else:
             logger.info("The feature to deactivate expired account is NOT enabled")
 
@@ -95,8 +97,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
             renewal_email_subject=config.get("renewal_email_subject"),
             exclude_user_id_patterns=config.get("exclude_user_id_patterns", []),
             send_links=config.get("send_links", True),
-            deactivate_expired_account_period=deactivate_expired_account_period,
-            admin_access_token=config.get("admin_access_token", None)
+            deactivate_expired_account_period=deactivate_expired_account_period
         )
         return parsed_config
 
@@ -194,6 +195,8 @@ class EmailAccountValidity(EmailAccountValidityBase):
     async def _deactivate_expired_account(self):
         """Deactivate users whose account has expired since ``deactivate_expired_account_period``
         """
+        if self._api.worker_name is not None:
+            return
         logger.info("Deactivating expired account")
         expired_users = await self._store.get_expired_users()
         nb_expired_users = len(expired_users)

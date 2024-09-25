@@ -23,6 +23,9 @@ from twisted.web.server import Request
 
 from synapse.module_api import ModuleApi, UserID, parse_json_object_from_request
 from synapse.module_api.errors import SynapseError
+from synapse.types import (
+    create_requester,
+)
 
 from email_account_validity._config import EmailAccountValidityConfig
 from email_account_validity._store import EmailAccountValidityStore
@@ -51,7 +54,6 @@ class EmailAccountValidityBase:
         self._period = config.period
         self._send_renewal_email_at = config.send_renewal_email_at
         self._send_links = config.send_links
-        self._admin_access_token = config.admin_access_token
         self._exclude_user_id_patterns = config.exclude_user_id_patterns
 
         (self._template_html, self._template_text,) = api.read_templates(
@@ -370,32 +372,17 @@ class EmailAccountValidityBase:
 
     async def deactivate_account(self, user_id: str) -> bool:
         """Deactivate a user's account
-        Args:
-            user_id: ID of user to be deactivated
 
-        Returns:
-            True if identity server supports removing threepids, otherwise False.
-        """
-        url = f"http://localhost:8008/_synapse/admin/v1/deactivate/{user_id}"
+            Args:
+                user_id: ID of user to be deactivated
 
-        headers = Headers()
-        headers.addRawHeader(b"Authorization", f"Bearer {self._admin_access_token}")
-
-        for retry_nb in range(10):
-            try:
-                response = await self._api._hs.get_proxied_http_client().request(
-                    "POST", uri=url, headers=headers
-                )
-                if response.code == 200:
-                    return True
-                # Let's also stop there if we get a client error that
-                # is not a rate limit.
-                if response.code < 500 and response.code != 429:
-                    logger.warning(f"user_id{user_id} was not deactivated - error code:{response.code}")
-                    break
-            except Exception as e:
-                logger.warning("Bot Admin has lost connection for %s: %s", user_id, e)
-
-        # use some backoff
-        await self._api._hs.get_clock().sleep(0.5 * retry_nb)
-        return False
+            Returns:
+                True if identity server supports removing threepids, otherwise False.
+            """
+        requester = create_requester(user_id)
+        return await self._deactivate_account_handler.deactivate_account(
+            user_id=user_id,
+            erase_data=False,
+            requester=requester,
+            by_admin=True
+        )

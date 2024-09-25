@@ -25,4 +25,3 @@ class EmailAccountValidityConfig:
     exclude_user_id_patterns: List[str] = []
     send_links: bool = True
     deactivate_expired_account_period: Optional[int] = None
-    admin_access_token: Optional[str] = None
