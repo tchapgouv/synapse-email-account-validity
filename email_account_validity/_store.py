@@ -295,9 +295,7 @@ class EmailAccountValidityStore:
         )
 
     async def get_expired_users(self) -> List[Dict[str, Union[str, int]]]:
-        """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
-        window (see configuration for account_validity for information on what send_renewal_email_at
-        refers to).
+        """Selects users whose account has been expired since `deactivate_expired_account_period`.
 
         Returns:
             A list of dictionaries, each with a user ID and expiration time (in
