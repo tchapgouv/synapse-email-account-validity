@@ -41,6 +41,7 @@ class EmailAccountValidityStore:
         self._send_renewal_email_at = config.send_renewal_email_at
         self._expiration_ts_max_delta = self._period * 10.0 / 100.0
         self._rand = random.SystemRandom()
+        self._deactivate_expired_account_period = config.deactivate_expired_account_period
 
         self._api.register_cached_function(self.get_expiration_ts_for_user)
 
@@ -290,6 +291,35 @@ class EmailAccountValidityStore:
 
         return await self._api.run_db_interaction(
             "get_users_expiring_soon",
+            select_users_txn
+        )
+
+    async def get_expired_users(self) -> List[Dict[str, Union[str, int]]]:
+        """Selects users whose account has been expired since `deactivate_expired_account_period`.
+
+        Returns:
+            A list of dictionaries, each with a user ID and expiration time (in
+            milliseconds).
+        """
+
+        def select_users_txn(txn):
+            now_ms = int(time.time() * 1000)
+
+            txn.execute(
+                """
+                SELECT eav.user_id
+                FROM email_account_validity eav
+                JOIN users u ON u.name = eav.user_id
+                WHERE eav.expiration_ts_ms + ? <=  ?
+                AND u.deactivated = 0
+                LIMIT 1000
+                """,
+                (self._deactivate_expired_account_period, now_ms),
+            )
+            return txn.fetchall()
+
+        return await self._api.run_db_interaction(
+            "get_expired_users",
             select_users_txn
         )
 

@@ -24,3 +24,4 @@ class EmailAccountValidityConfig:
     renewal_email_subject: Optional[str] = None
     exclude_user_id_patterns: List[str] = []
     send_links: bool = True
+    deactivate_expired_account_period: Optional[int] = None

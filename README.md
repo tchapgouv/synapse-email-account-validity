@@ -45,6 +45,8 @@ modules:
       exclude_user_id_patterns: 
         - "-test1.test4.org"
         - "-test1.test2.org"
+      # How long do we wait after the expiration date to deactivate an account  
+      deactivate_expired_account_period: 120d
 ```
 
 The syntax for durations is the same as in the rest of Synapse's configuration file.

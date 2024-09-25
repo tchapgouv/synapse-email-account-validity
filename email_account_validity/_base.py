@@ -18,10 +18,14 @@ import os
 import time
 from typing import Optional, Tuple
 
+from twisted.web.http_headers import Headers
 from twisted.web.server import Request
 
 from synapse.module_api import ModuleApi, UserID, parse_json_object_from_request
 from synapse.module_api.errors import SynapseError
+from synapse.types import (
+    create_requester,
+)
 
 from email_account_validity._config import EmailAccountValidityConfig
 from email_account_validity._store import EmailAccountValidityStore
@@ -44,6 +48,7 @@ class EmailAccountValidityBase:
         store: EmailAccountValidityStore,
     ):
         self._api = api
+        self._deactivate_account_handler = self._api._hs.get_deactivate_account_handler()
         self._store = store
 
         self._period = config.period
@@ -363,4 +368,21 @@ class EmailAccountValidityBase:
             body["user_id"],
             body.get("expiration_ts"),
             not body.get("enable_renewal_emails", True),
+        )
+
+    async def deactivate_account(self, user_id: str) -> bool:
+        """Deactivate a user's account
+
+            Args:
+                user_id: ID of user to be deactivated
+
+            Returns:
+                True if identity server supports removing threepids, otherwise False.
+            """
+        requester = create_requester(user_id)
+        return await self._deactivate_account_handler.deactivate_account(
+            user_id=user_id,
+            erase_data=False,
+            requester=requester,
+            by_admin=True
         )
