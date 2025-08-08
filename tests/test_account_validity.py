@@ -52,6 +52,81 @@ def populate_email_account_validity_with_existing_user(txn: LoggingTransaction, 
         (),
     )
 
+def create_user_table(txn: LoggingTransaction):
+    txn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users(
+        name TEXT,
+        password_hash TEXT,
+        creation_ts BIGINT UNSIGNED,
+        admin BOOL DEFAULT 0 NOT NULL,
+        deactivated smallint DEFAULT 0 NOT NULL,
+        UNIQUE(name)
+        );
+        """,
+        (),
+    )
+    txn.execute(
+        """
+        INSERT INTO users VALUES (
+            "@izzy-test:homeserver1",
+            "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            1700823133,
+            0,
+            0
+        );
+        """,
+        (),
+    )
+    txn.execute(
+        """
+        INSERT INTO users VALUES (
+            "@joe-test:homeserver1",
+            "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            1700823160,
+            0,
+            0
+        );
+        """,
+        (),
+    )
+    txn.execute(
+        """
+        INSERT INTO users VALUES (
+            "@albert-test:homeserver1",
+            "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            1700823160,
+            0,
+            1
+        );
+        """,
+        (),
+    )
+    txn.execute(
+        """
+        INSERT INTO users VALUES (
+            "@frida-test:homeserver1",
+            "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            1700823160,
+            0,
+            0
+        );
+        """,
+        (),
+    )
+
+    txn.execute(
+        """
+        INSERT INTO users VALUES (
+            "@rachel-test:homeserver1",
+            "$2b$12$58YVjKsB58DM.YFChWQM8uP0x3rh1iaKDNSPl3Jv34LGqwn7tIure",
+            1700823160,
+            0,
+            1
+        );
+        """,
+        (),
+    )
 
 class AccountValidityHooksTestCase(aiounittest.AsyncTestCase):
     async def test_user_expired(self):
@@ -556,7 +631,9 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
         self.assertEqual(9, len(res))
 
     async def test_get_users_expiring_soon(self):
+
         module = await create_account_validity_module()
+        await module._store._api.run_db_interaction("create_user_table", create_user_table, )
         now_ms = int(time.time() * 1000)
 
         user_id = "@izzy-test:homeserver1"
@@ -577,16 +654,29 @@ class AccountValidityEmailTestCase(aiounittest.AsyncTestCase):
             user_id=user_id3,
             expiration_ts=user_id_date3,
         )
+        user_id4 = "@frida-test:homeserver1"
+        user_id_date4 = now_ms - (10 * 24 * 60 * 60 * 1000)  # already expired : -10 days before
+        await module.renew_account_for_user(
+            user_id=user_id4,
+            expiration_ts=user_id_date4,
+        )
+        user_id5 = "@rachel-test:homeserver1"
+        user_id_date5 = now_ms - (10 * 24 * 60 * 60 * 1000)  # already expired and deactivated : -10 days before
+        await module.renew_account_for_user(
+            user_id=user_id5,
+            expiration_ts=user_id_date5,
+        )
 
         expiring_users = await module._store.get_users_expiring_soon()
 
-        self.assertEqual(2, len(expiring_users))
+        self.assertEqual(3, len(expiring_users))
 
     async def test_send_renewal_email(self):
         # conf :
         # "period": "6w",
         # "send_renewal_email_at": ["30d", "2w", "1w"],
         module = await create_account_validity_module()
+        await module._store._api.run_db_interaction("create_user_table", create_user_table, )
         now_ms = int(time.time() * 1000)
 
         threepids = {

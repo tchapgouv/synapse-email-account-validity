@@ -36,6 +36,7 @@ _TOKEN_COLUMN_NAME = {
 class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
+        self.server_name = self._api.server_name
         self._period = config.period
         self._exclude_user_id_patterns = config.exclude_user_id_patterns
         self._send_renewal_email_at = config.send_renewal_email_at
@@ -282,6 +283,7 @@ class EmailAccountValidityStore:
                 FROM email_account_validity eav
                 JOIN email_status_account_validity esav
                 ON eav.user_id = esav.user_id AND esav.email_sent = ?
+                JOIN users u ON u.name = eav.user_id AND u.deactivated = 0
                 GROUP BY eav.user_id, eav.expiration_ts_ms
                 HAVING (eav.expiration_ts_ms - ?) <= MAX(esav.renewal_period_in_ts)
                 """,
