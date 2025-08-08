@@ -115,6 +115,9 @@ class EmailAccountValidityBase:
         # deactivated, as a deactivated account isn't supposed to have any email address
         # attached to it.
         if not addresses:
+            logger.warning("No email addresses are defined for user_id=%s - threepids=%s",
+                           user_id,
+                           threepids)
             return
 
         try:
@@ -163,6 +166,9 @@ class EmailAccountValidityBase:
             )
 
         await self._store.set_renewal_mail_status(user_id=user_id, renewal_period_in_ts=renewal_period_in_ts, email_sent=True)
+        logger.debug("Email has been sent to user_id=%s, renewal_period_in_ts=%s",
+                     user_id,
+                     renewal_period_in_ts)
 
     def calculate_days_until_expiration(self, expiration_ts: int) -> int:
         SECONDS_PER_DAY = 86400
