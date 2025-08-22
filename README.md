@@ -10,7 +10,7 @@ with instructions to renew the validity of their account.
 
 This module requires:
 
-* Synapse >= 1.39.0
+* Synapse >= 1.136.0
 * sqlite3 >= 3.24.0 (if using SQLite with Synapse (not recommended))
 
 ## Installation

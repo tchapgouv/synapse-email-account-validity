@@ -19,7 +19,7 @@ from typing import Tuple, Optional
 
 from twisted.web.server import Request
 
-from synapse.module_api import ModuleApi, run_in_background
+from synapse.module_api import ModuleApi
 from synapse.module_api.errors import ConfigError
 
 from email_account_validity._base import EmailAccountValidityBase
@@ -46,7 +46,11 @@ class EmailAccountValidity(EmailAccountValidityBase):
 
         super().__init__(config, self._api, self._store)
 
-        run_in_background(self._store.create_and_populate_table, populate_users)
+        self._api.run_as_background_process(
+            __name__ + ":create_and_populate_table",
+            self._store.create_and_populate_table,
+            populate_users
+        )
         self._api.looping_background_call(
             self._send_renewal_emails, 30 * 60 * 1000
         )
