@@ -13,14 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pkg_resources import DistributionNotFound, get_distribution
-
 from email_account_validity.account_validity import EmailAccountValidity
-
-try:
-    __version__ = get_distribution(__name__).version
-except DistributionNotFound:
-    # package is not installed
-    pass
 
 __all__ = ["EmailAccountValidity"]
