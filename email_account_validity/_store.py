@@ -37,6 +37,7 @@ class EmailAccountValidityStore:
     def __init__(self, config: EmailAccountValidityConfig, api: ModuleApi):
         self._api = api
         self.server_name = self._api.server_name
+        self.clock = self._api._clock
         self._period = config.period
         self._exclude_user_id_patterns = config.exclude_user_id_patterns
         self._send_renewal_email_at = config.send_renewal_email_at

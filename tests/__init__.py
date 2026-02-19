@@ -132,6 +132,7 @@ async def create_account_validity_module(config={}) -> EmailAccountValidity:
     # etc.) are needed for running the tests.
     module_api = mock.Mock(spec=ModuleApi)
     module_api._hs = mock.Mock()
+    module_api._clock = mock.Mock()
     module_api.run_db_interaction.side_effect = store.run_db_interaction
     module_api.read_templates.side_effect = read_templates
     module_api.get_profile_for_user.side_effect = get_profile_for_user
