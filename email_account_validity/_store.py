@@ -656,3 +656,52 @@ class EmailAccountValidityStore:
             user_id,
         )
 
+
+    async def remove_expiration_for_deactivated_account(self) -> Tuple[int,int]:
+        """Selects users whose account will expire in the [now, now + send_renewal_email_at] time
+        window (see configuration for account_validity for information on what send_renewal_email_at
+        refers to).
+
+        Returns:
+            A list of dictionaries, each with a user ID and expiration time (in
+            milliseconds).
+        """
+
+        def _cleanup_email_account_validity(txn):
+
+            txn.execute(
+                """
+                DELETE FROM email_status_account_validity
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM users u
+                    WHERE u.name = email_status_account_validity.user_id
+                      AND u.deactivated = 1
+                )
+                """,
+                (),
+            )
+            delete_from_email_status_account_validity = txn.rowcount
+
+            txn.execute(
+                """
+                DELETE FROM email_account_validity
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM users u
+                    WHERE u.name = email_account_validity.user_id
+                      AND u.deactivated = 1
+                )
+                """,
+                (),
+            )
+            delete_from_email_account_validity = txn.rowcount
+
+            return delete_from_email_status_account_validity, delete_from_email_account_validity
+
+        return await self._api.run_db_interaction(
+            "delete_from_email_status_account_validity",
+            _cleanup_email_account_validity
+        )
+
+

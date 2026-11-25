@@ -54,6 +54,9 @@ class EmailAccountValidity(EmailAccountValidityBase):
         self._api.looping_background_call(
             self._send_renewal_emails, 30 * 60 * 1000
         )
+        self._api.looping_background_call(
+            self._cleanup_expiration_for_deactivated_account, 24 * 60 * 60 * 1000
+        )
 
         if config.deactivate_expired_account_period:
             if self._api.worker_name is None:
@@ -199,6 +202,7 @@ class EmailAccountValidity(EmailAccountValidityBase):
     async def _deactivate_expired_account(self):
         """Deactivate users whose account has expired since ``deactivate_expired_account_period``
         """
+        # Has to execute the deactivation on the main process
         if self._api.worker_name is not None:
             return
         logger.info("Deactivating expired account")
@@ -212,3 +216,11 @@ class EmailAccountValidity(EmailAccountValidityBase):
                     count = count + 1
                     logger.debug(f"{count}/{nb_expired_users} deactivated account - user_id={user[0]} - done")
         logger.info(f"Deactivate expired account - {count}/{nb_expired_users} users")
+
+    async def _cleanup_expiration_for_deactivated_account(self):
+        """
+        Clean up all expiration from the table for deactivated accounts.
+        """
+        logger.info("Remove expiration for deactivated account")
+        delete_from_email_status_account_validity, delete_from_email_account_validity = await self._store.remove_expiration_for_deactivated_account()
+        logger.info(f"Remove expiration for deactivated account: {delete_from_email_account_validity} users with {delete_from_email_status_account_validity}/{delete_from_email_account_validity*3} email status")
